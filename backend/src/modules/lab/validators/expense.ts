@@ -2,6 +2,8 @@ import { z } from 'zod'
 
 export const expenseCreateSchema = z.object({
   date: z.string().min(1),
+  time: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  createdBy: z.string().optional(),
   type: z.enum(['Rent','Utilities','Supplies','Salaries','Maintenance','Other']),
   note: z.string().optional().default(''),
   amount: z.number().nonnegative(),

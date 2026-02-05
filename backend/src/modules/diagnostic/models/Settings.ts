@@ -16,6 +16,10 @@ const SettingsSchema = new Schema({
     default: [],
     validate: [(arr: any[]) => !arr || arr.length <= 3, 'Maximum 3 consultants allowed'],
   },
+  templateMappings: {
+    type: [{ testId: String, testName: String, templateKey: String }],
+    default: [],
+  },
 }, { timestamps: true })
 
 export type DiagnosticSettingsDoc = {
@@ -31,6 +35,7 @@ export type DiagnosticSettingsDoc = {
   consultantDegrees?: string
   consultantTitle?: string
   consultants?: Array<{ name?: string; degrees?: string; title?: string }>
+  templateMappings?: Array<{ testId: string; testName?: string; templateKey: string }>
 }
 
 export const DiagnosticSettings = models.Diagnostic_Settings || model('Diagnostic_Settings', SettingsSchema)

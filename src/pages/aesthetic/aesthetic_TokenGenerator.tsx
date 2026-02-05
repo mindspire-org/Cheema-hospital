@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { labApi, aestheticApi } from '../../utils/api'
+import Aesthetic_TokenSlip, { type TokenSlipData } from '../../components/aesthetic/aesthetic_TokenSlip'
 
 export default function Aesthetic_TokenGeneratorPage(){
   const [phone, setPhone] = useState('')
@@ -33,7 +34,9 @@ export default function Aesthetic_TokenGeneratorPage(){
   const [procPrice, setProcPrice] = useState('')
   const [procDiscount, setProcDiscount] = useState('0')
   const [procPaid, setProcPaid] = useState('0')
-  const [doctors, setDoctors] = useState<Array<{ id: string; name: string; specialty?: string; fee?: number }>>([])
+  const [doctors, setDoctors] = useState<Array<{ id: string; name: string; specialty?: string; fee?: number; shares?: number }>>([])
+  const [showSlip, setShowSlip] = useState(false)
+  const [slipData, setSlipData] = useState<TokenSlipData | null>(null)
 
   const finalFee = useMemo(()=> {
     const fee = parseFloat(consultationFee || '0')
@@ -50,7 +53,7 @@ export default function Aesthetic_TokenGeneratorPage(){
       try {
         const res: any = await aestheticApi.listDoctors({ limit: 500 })
         const items: any[] = (res?.doctors || res || []) as any[]
-        const mapped = items.map(d=> ({ id: String(d._id||d.id), name: String(d.name||''), specialty: d.specialty || '', fee: Number(d.fee||0) }))
+        const mapped = items.map(d=> ({ id: String(d._id||d.id), name: String(d.name||''), specialty: d.specialty || '', fee: Number(d.fee||0), shares: Number(d.shares||0) }))
         if (!cancelled) setDoctors(mapped)
       } catch { if (!cancelled) setDoctors([]) }
     })()
@@ -289,6 +292,31 @@ export default function Aesthetic_TokenGeneratorPage(){
     })
     const rec = res?.token
     setToast(`Generated token #${rec?.number ?? ''}${pat?.mrn? ` • MRN ${pat.mrn}`:''}`)
+    try {
+      const docName = doctors.find(d => String(d.id) === String(doctorId))?.name || '-'
+      const slip: TokenSlipData = {
+        tokenNo: String(rec?.number ?? ''),
+        departmentName: 'Aesthetic',
+        doctorName: docName,
+        patientName: nameVal || '-',
+        phone: phoneVal || '',
+        mrn: String(rec?.mrNumber || pat?.mrn || ''),
+        age: age || undefined,
+        gender: gender || undefined,
+        address: address || undefined,
+        amount: Number(rec?.fee ?? 0),
+        discount: Number(rec?.discount ?? 0),
+        payable: Number(rec?.payable ?? 0),
+        createdAt: rec?.date,
+        procedurePrice: rec?.procedurePrice,
+        procedureDiscount: rec?.procedureDiscount,
+        procedurePaidToday: rec?.procedurePaidToday,
+        procedurePaidToDate: rec?.procedurePaidToDate,
+        procedureBalanceAfter: rec?.procedureBalanceAfter,
+      }
+      setSlipData(slip)
+      setShowSlip(true)
+    } catch {}
     setTimeout(()=> setToast(null), 2000)
     setPhone(''); setPatientName(''); setMrNumber(''); setAge(''); setGender(''); setGuardianRelation(''); setGuardianName(''); setCnic(''); setAddress(''); setDoctorId(''); setConsultationFee(''); setDiscount('0');
     setCreateSession(false); setProcId(''); setProcPrice(''); setProcDiscount('0'); setProcPaid('0')
@@ -297,7 +325,7 @@ export default function Aesthetic_TokenGeneratorPage(){
   }
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="w-full">
       <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100">Token Generator</h2>
       <form onSubmit={generateToken} className="mt-6 space-y-8">
         <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -472,6 +500,9 @@ export default function Aesthetic_TokenGeneratorPage(){
 
       {toast && (
         <div className="fixed bottom-4 right-4 z-50 rounded-md bg-emerald-600 px-4 py-2 text-sm text-white shadow-lg">{toast}</div>
+      )}
+      {showSlip && slipData && (
+        <Aesthetic_TokenSlip open={showSlip} onClose={()=>setShowSlip(false)} data={slipData} autoPrint={true} />
       )}
       {showPhonePicker && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">

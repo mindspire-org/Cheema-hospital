@@ -6,6 +6,5 @@ export const settingsUpdateSchema = z.object({
   address: z.string().optional(),
   logoDataUrl: z.string().optional(),
   code: z.string().optional(),
-  mrFormat: z.string().optional(),
   slipFooter: z.string().optional(),
 })

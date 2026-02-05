@@ -50,7 +50,15 @@ export default function Hospital_DoctorSchedules(){
     try{
       const res = await hospitalApi.listDoctorSchedules({ doctorId, date: anchorDate }) as any
       setRows(res?.schedules || [])
-    }catch{ setRows([]) }
+    }catch{
+      // Fallback: some backends 500 on certain doctorId filters; retry without doctor filter and filter client-side
+      try{
+        const resAll = await hospitalApi.listDoctorSchedules({ date: anchorDate }) as any
+        const all: any[] = resAll?.schedules || []
+        const filtered = doctorId ? all.filter((r:any)=> String(r.doctorId||'') === String(doctorId)) : all
+        setRows(filtered)
+      }catch{ setRows([]) }
+    }
     setLoading(false)
   }
 
@@ -82,6 +90,11 @@ export default function Hospital_DoctorSchedules(){
 
   async function saveWeeklyPattern(){
     if (!doctorId) { alert('Select doctor'); return }
+    // Basic validation to avoid server 500 on invalid IDs
+    if (!/^[0-9a-fA-F]{24}$/.test(String(doctorId))) {
+      alert('Selected doctor has an invalid ID format. Please pick a doctor created in this module.');
+      return
+    }
     const days = weekly.map((d,i)=>({
       day: i,
       enabled: !!d.enabled,

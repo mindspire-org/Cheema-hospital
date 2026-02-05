@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { pharmacyApi } from '../../utils/api'
 import { Download, Printer } from 'lucide-react'
 import {
@@ -18,11 +18,10 @@ export default function Pharmacy_Reports() {
   const [from, setFrom] = useState(startMonthStr)
   const [to, setTo] = useState(todayStr)
   const [tick, setTick] = useState(0)
-  const [shiftDate, setShiftDate] = useState(todayStr)
   const [shifts, setShifts] = useState<Array<{ id: string; name: string; start: string; end: string }>>([])
-  const [shiftId, setShiftId] = useState('')
-  const [shiftLoading, setShiftLoading] = useState(false)
-  const [shiftCash, setShiftCash] = useState<{ inSales: number; inMov: number; outMov: number; expenses: number; net: number }>({ inSales: 0, inMov: 0, outMov: 0, expenses: 0, net: 0 })
+  const [filterShiftId, setFilterShiftId] = useState('')
+  const [fromTime, setFromTime] = useState('')
+  const [toTime, setToTime] = useState('')
 
   type Summary = {
     totalSales: number
@@ -47,7 +46,6 @@ export default function Pharmacy_Reports() {
         if (!mounted) return
         const arr = (res?.items || res || []).map((x:any)=> ({ id: String(x._id||x.id), name: x.name, start: x.start, end: x.end }))
         setShifts(arr)
-        if (!shiftId && arr.length) setShiftId(arr[0].id)
       } catch {}
     })()
     return ()=>{ mounted = false }
@@ -66,38 +64,24 @@ export default function Pharmacy_Reports() {
     } catch { return null }
   }
 
-  async function computeShiftCash(){
-    const sh = shifts.find(s=>s.id===shiftId)
-    const win = getShiftWindow(shiftDate, sh)
-    if (!win) return
-    setShiftLoading(true)
+  // Global effective window: time overrides; if single-day and shift selected, use shift window
+  const effectiveWindow = useMemo(()=>{
     try{
-      // Load lists and aggregate client-side by timestamp
-      const [salesRes, movRes, expRes]: any = await Promise.all([
-        pharmacyApi.listSales({ from: shiftDate, to: shiftDate, page: 1, limit: 1000 }),
-        pharmacyApi.listCashMovements({ from: shiftDate, to: shiftDate, page: 1, limit: 1000 }),
-        pharmacyApi.listExpenses({ from: shiftDate, to: shiftDate, page: 1, limit: 1000 })
-      ])
-      const ts = (d:any)=>{
-        const s = String(d||'')
-        const iso = s.includes('T') ? s : `${s}T00:00:00`
-        const t = new Date(iso).getTime()
-        return isFinite(t)? t : 0
+      if (fromTime && toTime){
+        return { from: `${from}T${fromTime}:00`, to: `${to}T${toTime}:59` }
       }
-      const inRange = (t:number)=> t>=win.start.getTime() && t<win.end.getTime()
-      const salesArr: any[] = (salesRes?.items || [])
-      const cashSales = salesArr.filter(s=> String(s.payment||'')==='Cash' && inRange(ts(s.datetime||s.createdAt||s.date))).reduce((sum,s)=> sum + Number(s.total||0), 0)
-      const movArr: any[] = (movRes?.items || movRes || [])
-      const movIn = movArr.filter(m=> String(m.type||'')==='IN' && inRange(ts(m.date||m.dateIso||m.createdAt))).reduce((s,m)=> s + Number(m.amount||0), 0)
-      const movOut = movArr.filter(m=> String(m.type||'')==='OUT' && inRange(ts(m.date||m.dateIso||m.createdAt))).reduce((s,m)=> s + Number(m.amount||0), 0)
-      const expArr: any[] = (expRes?.items || expRes || [])
-      const exp = expArr.filter(e=> inRange(ts(e.date||e.dateIso||e.createdAt))).reduce((s,e)=> s + Number(e.amount||0), 0)
-      const net = Math.max(0, (cashSales + movIn) - (movOut + exp))
-      setShiftCash({ inSales: cashSales, inMov: movIn, outMov: movOut, expenses: exp, net })
-    } catch {
-      setShiftCash({ inSales: 0, inMov: 0, outMov: 0, expenses: 0, net: 0 })
-    } finally { setShiftLoading(false) }
-  }
+      if (filterShiftId && from === to){
+        const sh = shifts.find(s=>s.id===filterShiftId)
+        const win = getShiftWindow(from, sh)
+        if (win){
+          const f = new Date(win.start.getTime() - (win.start.getTimezoneOffset()*60000)).toISOString().slice(0,19)
+          const t = new Date(win.end.getTime() - (win.end.getTimezoneOffset()*60000)).toISOString().slice(0,19)
+          return { from: f, to: t }
+        }
+      }
+    } catch {}
+    return { from, to }
+  }, [from, to, fromTime, toTime, filterShiftId, shifts])
 
   function startOfWeek(d: Date) {
     const x = weekStart(d)
@@ -305,6 +289,29 @@ export default function Pharmacy_Reports() {
     return `${y}-${m}-${day}`
   }
 
+  function fmt12(hhmm: string): string {
+    try{
+      if (!hhmm) return ''
+      const s = String(hhmm).trim()
+      if (/[ap]m/i.test(s)){
+        const mm = s.match(/^(\d{1,2}):(\d{2})\s*([ap]m)$/i)
+        if (mm){
+          const h = Math.max(1, Math.min(12, parseInt(mm[1],10) || 12))
+          return `${String(h).padStart(2,'0')}:${mm[2]} ${mm[3].toUpperCase()}`
+        }
+        return s.replace(/(am|pm)/i, (m)=>m.toUpperCase())
+      }
+      const parts = s.split(':')
+      if (parts.length < 2) return s
+      const h = parseInt(parts[0],10)
+      const m = parts[1].slice(0,2)
+      if (isNaN(h)) return s
+      const am = h < 12
+      const h12 = (h % 12) || 12
+      return `${String(h12).padStart(2,'0')}:${m} ${am ? 'AM' : 'PM'}`
+    } catch { return hhmm }
+  }
+
   function weekStart(date: Date){
     const d = new Date(date)
     const day = d.getDay() // 0 Sun ... 6 Sat
@@ -318,13 +325,15 @@ export default function Pharmacy_Reports() {
     let mounted = true
     async function load(){
       try {
+        const dateFrom = String(effectiveWindow.from).slice(0,10)
+        const dateTo = String(effectiveWindow.to).slice(0,10)
         const [sales, cash, credit, inv, pur, exp, settings] = await Promise.all([
-          pharmacyApi.salesSummary({ from, to }),
-          pharmacyApi.salesSummary({ payment: 'Cash', from, to }),
-          pharmacyApi.salesSummary({ payment: 'Credit', from, to }),
+          pharmacyApi.salesSummary({ from: effectiveWindow.from, to: effectiveWindow.to }),
+          pharmacyApi.salesSummary({ payment: 'Cash', from: effectiveWindow.from, to: effectiveWindow.to }),
+          pharmacyApi.salesSummary({ payment: 'Credit', from: effectiveWindow.from, to: effectiveWindow.to }),
           pharmacyApi.inventorySummary(),
-          pharmacyApi.purchasesSummary({ from, to }),
-          pharmacyApi.expensesSummary({ from, to }),
+          pharmacyApi.purchasesSummary({ from: dateFrom, to: dateTo }),
+          pharmacyApi.expensesSummary({ from: effectiveWindow.from, to: effectiveWindow.to }),
           pharmacyApi.getSettings().catch(() => ({ pharmacyName: 'Pharmacy' })),
         ])
         if (!mounted) return
@@ -365,7 +374,7 @@ export default function Pharmacy_Reports() {
       } catch (e) { console.error(e) }
 
       try {
-        const list: any = await pharmacyApi.listSales({ from, to, limit: 500 })
+        const list: any = await pharmacyApi.listSales({ from: effectiveWindow.from, to: effectiveWindow.to, limit: 500 })
         const dayMap = new Map<string, number>()
         for (const s of (list?.items || [])){
           const d = String(s.datetime || '').slice(0,10)
@@ -393,8 +402,7 @@ export default function Pharmacy_Reports() {
     }
     load()
     return ()=>{ mounted = false }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tick])
+  }, [tick, effectiveWindow.from, effectiveWindow.to])
 
   const maxWeekly = Math.max(...weeklySales.map((d) => d.value), 1)
   const maxComp = Math.max(...comparison.map(d => d.value), 1)
@@ -417,7 +425,7 @@ export default function Pharmacy_Reports() {
 
       <div className="rounded-xl border border-slate-200 bg-white p-4">
         <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto] items-end">
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <label className="mb-1 block text-sm text-slate-700">From</label>
               <input type="date" value={from} onChange={e=>setFrom(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
@@ -426,12 +434,24 @@ export default function Pharmacy_Reports() {
               <label className="mb-1 block text-sm text-slate-700">To</label>
               <input type="date" value={to} onChange={e=>setTo(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
             </div>
+            <div>
+              <label className="mb-1 block text-sm text-slate-700">From Time (optional)</label>
+              <input type="time" value={fromTime} onChange={e=>setFromTime(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm text-slate-700">To Time (optional)</label>
+              <input type="time" value={toTime} onChange={e=>setToTime(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            </div>
           </div>
           <div className="flex items-end">
             <div className="flex flex-wrap items-center gap-2">
               <button type="button" onClick={setRangeToday} className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50">Today</button>
               <button type="button" onClick={setRangeThisWeek} className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50">This Week</button>
               <button type="button" onClick={setRangeThisMonth} className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50">This Month</button>
+              <select value={filterShiftId} onChange={e=>setFilterShiftId(e.target.value)} className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm">
+                <option value="">All Shifts</option>
+                {shifts.map(s=> <option key={s.id} value={s.id}>{s.name} ({fmt12(s.start)}-{fmt12(s.end)})</option>)}
+              </select>
               <button onClick={apply} className="btn">Apply</button>
             </div>
           </div>
@@ -453,51 +473,13 @@ export default function Pharmacy_Reports() {
         <SummaryCard title="Total Stock Value" value={`PKR ${summary.stockValue.toLocaleString()}`} bg="bg-teal-50" border="border-teal-200" />
       </div>
 
-      {/* Shift-wise Cash */}
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <div className="mb-2 text-sm font-medium text-slate-800">Shift-wise Cash</div>
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="text-sm text-slate-700">
-            <div className="mb-1">Date</div>
-            <input type="date" value={shiftDate} onChange={e=>setShiftDate(e.target.value)} className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-          </label>
-          <label className="text-sm text-slate-700">
-            <div className="mb-1">Shift</div>
-            <select value={shiftId} onChange={e=>setShiftId(e.target.value)} className="rounded-md border border-slate-300 px-3 py-2 text-sm min-w-[160px]">
-              {shifts.map(s=> <option key={s.id} value={s.id}>{s.name} ({s.start}-{s.end})</option>)}
-            </select>
-          </label>
-          <button type="button" onClick={computeShiftCash} disabled={!shiftId || shiftLoading} className="btn disabled:opacity-50">{shiftLoading? 'Calculating…' : 'Calculate'}</button>
-        </div>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5 text-sm">
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <div className="text-slate-600">Cash Sales</div>
-            <div className="mt-1 font-semibold text-slate-900">PKR {shiftCash.inSales.toLocaleString()}</div>
-          </div>
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <div className="text-slate-600">Cash In (Movements)</div>
-            <div className="mt-1 font-semibold text-slate-900">PKR {shiftCash.inMov.toLocaleString()}</div>
-          </div>
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <div className="text-slate-600">Cash Out (Movements)</div>
-            <div className="mt-1 font-semibold text-slate-900">PKR {shiftCash.outMov.toLocaleString()}</div>
-          </div>
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <div className="text-slate-600">Expenses</div>
-            <div className="mt-1 font-semibold text-slate-900">PKR {shiftCash.expenses.toLocaleString()}</div>
-          </div>
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <div className="text-slate-600">Net Cash</div>
-            <div className="mt-1 font-semibold text-slate-900">PKR {shiftCash.net.toLocaleString()}</div>
-          </div>
-        </div>
-      </div>
+      {/* Shift-wise Cash removed; global filters apply above */}
 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <div className="mb-3 font-medium text-slate-800">Weekly Sales</div>
           <div className="h-56 w-full overflow-hidden rounded-xl border border-slate-100 bg-slate-50 p-3 shadow-sm" style={{ minWidth: 0, minHeight: 0 }}>
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
               <BarChart
                 data={weeklySales.map(d => ({
                   week: `Wk ${new Date(d.week).toLocaleDateString(undefined, { month: 'short', day: '2-digit' })}`,
@@ -551,7 +533,7 @@ export default function Pharmacy_Reports() {
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <div className="mb-3 font-medium text-slate-800">Comparison: Sales, Purchases, Expenses</div>
           <div className="h-56 w-full overflow-hidden rounded-xl border border-slate-100 bg-slate-50 p-3 shadow-sm" style={{ minWidth: 0, minHeight: 0 }}>
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
               <BarChart
                 data={comparison}
                 margin={{ top: 12, right: 12, left: 0, bottom: 8 }}

@@ -33,6 +33,8 @@ export async function create(req: Request, res: Response){
     invoice: data.invoice,
     supplierId: data.supplierId,
     supplierName: data.supplierName,
+    companyId: (data as any).companyId,
+    companyName: (data as any).companyName,
     totalAmount: Number(totalAmount.toFixed(2)),
     lines: data.lines.map(l => ({
       ...l,

@@ -36,21 +36,6 @@ const defaultSidebarItems = [
 // Default visibility by role
 const defaultVisibility: Record<string, Array<{ path: string; label: string; visible: boolean; order: number }>> = {
   admin: defaultSidebarItems.map(item => ({ ...item, visible: true })),
-  technician: defaultSidebarItems.map(item => ({
-    ...item,
-    visible: [
-      '/lab/staff-attendance','/lab/staff-management','/lab/staff-settings','/lab/staff-monthly',
-      '/lab/user-management','/lab/settings','/lab/expenses','/lab/pay-in-out','/lab/manager-cash-count','/lab/sidebar-permissions',
-      '/lab/reports'
-    ].includes(item.path) ? false : true,
-  })),
-  reception: defaultSidebarItems.map(item => ({
-    ...item,
-    visible: [
-      '/lab/tests','/lab/results','/lab/inventory','/lab/suppliers','/lab/purchase-history','/lab/supplier-returns','/lab/return-history',
-      '/lab/staff-attendance','/lab/staff-management','/lab/staff-settings','/lab/staff-monthly','/lab/settings','/lab/user-management','/lab/sidebar-permissions'
-    ].includes(item.path) ? false : true,
-  })),
 }
 
 const defaultAllVisible = defaultSidebarItems.map(item => ({ ...item, visible: true }))
@@ -63,7 +48,11 @@ function getDefaultForRole(role: string) {
 }
 
 export async function listRoles(_req: Request, res: Response) {
-  const roles = await LabSidebarPermission.find({}, { role: 1 }).sort({ role: 1 }).lean()
+  let roles = await LabSidebarPermission.find({}, { role: 1 }).sort({ role: 1 }).lean()
+  if (!roles.length) {
+    await createDefaultPermissions()
+    roles = await LabSidebarPermission.find({}, { role: 1 }).sort({ role: 1 }).lean()
+  }
   const items = roles.map(r => r.role).filter((r: any) => String(r || '').trim().toLowerCase() !== 'superadmin')
   res.json({ items })
 }
@@ -94,7 +83,7 @@ export async function createRole(req: Request, res: Response) {
 export async function deleteRole(req: Request, res: Response) {
   const role = normalizeRole(req.params.role)
   if (!role) return res.status(400).json({ message: 'Role is required' })
-  if (['admin', 'technician', 'reception', 'superadmin'].includes(role)) {
+  if (['admin', 'superadmin'].includes(role)) {
     return res.status(400).json({ message: 'Default roles cannot be deleted' })
   }
   await LabSidebarPermission.deleteOne({ role })
@@ -160,7 +149,7 @@ export async function resetToDefaults(req: Request, res: Response) {
 }
 
 export async function createDefaultPermissions(){
-  const roles = ['admin','technician','reception']
+  const roles = ['admin']
   const docs = [] as any[]
   for (const r of roles){
     const exists = await LabSidebarPermission.findOne({ role: r }).lean()

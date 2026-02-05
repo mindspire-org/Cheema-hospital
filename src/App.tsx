@@ -109,8 +109,10 @@ import Finance_Ledger from './pages/finance/Ledger'
 import Finance_Vouchers from './pages/finance/Vouchers'
 import Finance_Recurring from './pages/finance/Recurring'
 import Finance_Combined from './pages/finance/CombinedSummary'
-import Finance_BusinessDay from './pages/finance/BusinessDay'
 import Finance_Liabilities from './pages/finance/Liabilities'
+import Finance_UserManagement from './pages/finance/finance_UserManagement'
+import Finance_SidebarPermissions from './pages/finance/finance_SidebarPermissions'
+import Finance_AuditLogs from './pages/finance/finance_AuditLogs'
 import Hospital_DoctorPayouts from './pages/hospital/hospital_DoctorPayouts'
 import Hospital_CashSessions from './pages/hospital/hospital_CashSessions'
 import Pharmacy_Login from './pages/pharmacy/pharmacy_Login'
@@ -124,6 +126,7 @@ import Pharmacy_Inventory from './pages/pharmacy/pharmacy_Inventory'
 import Pharmacy_AddInvoicePage from './components/pharmacy/pharmacy_AddInvoicePage'
 import Pharmacy_Customers from './pages/pharmacy/pharmacy_Customers'
 import Pharmacy_Suppliers from './pages/pharmacy/pharmacy_Suppliers'
+import Pharmacy_Companies from './pages/pharmacy/pharmacy_Companies'
 import Pharmacy_Settings from './pages/pharmacy/pharmacy_Settings'
 import Pharmacy_PayInOut from './pages/pharmacy/pharmacy_PayInOut'
 import Pharmacy_ManagerCashCount from './pages/pharmacy/pharmacy_ManagerCashCount'
@@ -154,11 +157,14 @@ import Diagnostic_ReportGenerator from './pages/diagnostic/diagnostic_ReportGene
 import Diagnostic_AuditLogs from './pages/diagnostic/diagnostic_AuditLogs'
 import Diagnostic_Settings from './pages/diagnostic/diagnostic_Settings'
 import Diagnostic_UserManagement from './pages/diagnostic/diagnostic_UserManagement'
+import Diagnostic_SidebarPermissions from './pages/diagnostic/diagnostic_SidebarPermissions'
 import Diagnostic_Referrals from './pages/diagnostic/diagnostic_Referrals'
 import Reception_Login from './pages/reception/reception_Login.tsx'
 import Reception_Layout from './pages/reception/reception_Layout.tsx'
 import Reception_IPDBilling from './pages/reception/reception_IPDBilling'
 import Reception_IPDTransactions from './pages/reception/reception_IPDTransactions'
+import Reception_UserManagement from './pages/reception/reception_UserManagement'
+import Reception_SidebarPermissions from './pages/reception/reception_SidebarPermissions'
 import Aesthetic_Login from './pages/aesthetic/aesthetic_Login'
 import Aesthetic_Layout from './pages/aesthetic/aesthetic_Layout'
 import Aesthetic_Dashboard from './pages/aesthetic/aesthetic_Dashboard'
@@ -176,6 +182,11 @@ import Aesthetic_DoctorManagementPage from './pages/aesthetic/aesthetic_DoctorMa
 import Aesthetic_AuditLogsPage from './pages/aesthetic/aesthetic_AuditLogs'
 import Aesthetic_UserManagementPage from './pages/aesthetic/aesthetic_UserManagement'
 import Aesthetic_Notifications from './pages/aesthetic/aesthetic_Notifications'
+import Aesthetic_StaffAttendance from './pages/aesthetic/aesthetic_StaffAttendance'
+import Aesthetic_StaffManagement from './pages/aesthetic/aesthetic_StaffManagement'
+import Aesthetic_StaffSettings from './pages/aesthetic/aesthetic_StaffSettings'
+import Aesthetic_StaffMonthly from './pages/aesthetic/aesthetic_StaffMonthly'
+import Aesthetic_StaffDashboard from './pages/aesthetic/aesthetic_StaffDashboard'
 import Aesthetic_SupplierReturns from './pages/aesthetic/aesthetic_SupplierReturns'
 import Aesthetic_PurchaseHistory from './pages/aesthetic/aesthetic_PurchaseHistory'
 import Aesthetic_Settings from './pages/aesthetic/aesthetic_Settings'
@@ -183,6 +194,7 @@ import Aesthetic_ConsentTemplates from './pages/aesthetic/aesthetic_ConsentTempl
 import Aesthetic_ProcedureCatalog from './pages/aesthetic/aesthetic_ProcedureCatalog'
 import Aesthetic_DoctorFinance from './pages/aesthetic/aesthetic_DoctorFinance'
 import Aesthetic_DoctorPayouts from './pages/aesthetic/aesthetic_DoctorPayouts'
+import Aesthetic_SidebarPermissions from './pages/aesthetic/aesthetic_SidebarPermissions'
 
 export default function App() {
   return (
@@ -203,6 +215,8 @@ export default function App() {
         <Route path="equipment/breakdown-register" element={<Hospital_EquipmentBreakdownRegister />} />
         <Route path="equipment/condemnation-register" element={<Hospital_EquipmentCondemnationRegister />} />
         <Route path="ipd" element={<Hospital_IPDDashboard />} />
+        <Route path="ipd-billing" element={<Reception_IPDBilling />} />
+        <Route path="ipd-transactions" element={<Reception_IPDTransactions />} />
         <Route path="bed-management" element={<Hospital_BedManagement />} />
         <Route path="patient-list" element={<Hospital_PatientList />} />
         <Route path="patient/:id" element={<Hospital_PatientProfile />} />
@@ -272,8 +286,14 @@ export default function App() {
         <Route path="doctor-payouts" element={<Aesthetic_DoctorPayouts />} />
         <Route path="audit-logs" element={<Aesthetic_AuditLogsPage />} />
         <Route path="user-management" element={<Aesthetic_UserManagementPage />} />
+        <Route path="sidebar-permissions" element={<Aesthetic_SidebarPermissions />} />
         <Route path="procedure-catalog" element={<Aesthetic_ProcedureCatalog />} />
         <Route path="consent-templates" element={<Aesthetic_ConsentTemplates />} />
+        <Route path="staff-attendance" element={<Aesthetic_StaffAttendance />} />
+        <Route path="staff-management" element={<Aesthetic_StaffManagement />} />
+        <Route path="staff-settings" element={<Aesthetic_StaffSettings />} />
+        <Route path="staff-monthly" element={<Aesthetic_StaffMonthly />} />
+        <Route path="staff-dashboard" element={<Aesthetic_StaffDashboard />} />
         <Route path="settings" element={<Aesthetic_Settings />} />
       </Route>
       <Route path="/diagnostic/login" element={<Diagnostic_Login />} />
@@ -285,6 +305,7 @@ export default function App() {
         <Route path="result-entry" element={<Diagnostic_ResultEntry />} />
         <Route path="report-generator" element={<Diagnostic_ReportGenerator />} />
         <Route path="referrals" element={<Diagnostic_Referrals />} />
+        <Route path="sidebar-permissions" element={<Diagnostic_SidebarPermissions />} />
         <Route path="user-management" element={<Diagnostic_UserManagement />} />
         <Route path="audit-logs" element={<Diagnostic_AuditLogs />} />
         <Route path="settings" element={<Diagnostic_Settings />} />
@@ -344,6 +365,7 @@ export default function App() {
         <Route path="inventory/edit-invoice/:id" element={<Pharmacy_AddInvoicePage />} />
         <Route path="customers" element={<Pharmacy_Customers />} />
         <Route path="suppliers" element={<Pharmacy_Suppliers />} />
+        <Route path="companies" element={<Pharmacy_Companies />} />
         <Route path="sales-history" element={<Pharmacy_SalesHistory />} />
         <Route path="purchase-history" element={<Pharmacy_PurchaseHistory />} />
         <Route path="return-history" element={<Pharmacy_ReturnHistory />} />
@@ -384,15 +406,20 @@ export default function App() {
         <Route path="vouchers" element={<Finance_Vouchers />} />
         <Route path="recurring" element={<Finance_Recurring />} />
         <Route path="combined" element={<Finance_Combined />} />
-        <Route path="business-day" element={<Finance_BusinessDay />} />
         <Route path="liabilities" element={<Finance_Liabilities />} />
+        <Route path="audit-logs" element={<Finance_AuditLogs />} />
+        <Route path="sidebar-permissions" element={<Finance_SidebarPermissions />} />
+        <Route path="user-management" element={<Finance_UserManagement />} />
       </Route>
       <Route path="/reception/login" element={<Reception_Login />} />
       <Route path="/reception" element={<Reception_Layout />}>
+        <Route index element={<Hospital_TokenGenerator />} />
         <Route path="token-generator" element={<Hospital_TokenGenerator />} />
         <Route path="today-tokens" element={<Hospital_TodayTokens />} />
         <Route path="ipd-billing" element={<Reception_IPDBilling />} />
         <Route path="ipd-transactions" element={<Reception_IPDTransactions />} />
+        <Route path="user-management" element={<Reception_UserManagement />} />
+        <Route path="sidebar-permissions" element={<Reception_SidebarPermissions />} />
         <Route path="diagnostic/token-generator" element={<Diagnostic_TokenGenerator />} />
         <Route path="diagnostic/sample-tracking" element={<Diagnostic_SampleTracking />} />
         <Route path="lab/sample-intake" element={<Lab_Orders />} />

@@ -2,6 +2,7 @@ import { useState } from 'react'
 
  type Expense = {
   date: string
+  time?: string
   type: 'Rent' | 'Utilities' | 'Supplies' | 'Salaries' | 'Maintenance' | 'Other'
   note: string
   amount: number
@@ -15,6 +16,7 @@ type Props = {
 
 export default function Lab_AddExpense({ open, onClose, onSave }: Props) {
   const [date, setDate] = useState('')
+  const [time, setTime] = useState('')
   const [type, setType] = useState<Expense['type']>('Other')
   const [note, setNote] = useState('')
   const [amount, setAmount] = useState<number>(0)
@@ -23,9 +25,10 @@ export default function Lab_AddExpense({ open, onClose, onSave }: Props) {
 
   const save = () => {
     if (!date || !note || !amount) return
-    onSave({ date, type, note, amount })
+    onSave({ date, time: time || undefined, type, note, amount })
     onClose()
     setDate('')
+    setTime('')
     setType('Other')
     setNote('')
     setAmount(0)
@@ -43,6 +46,10 @@ export default function Lab_AddExpense({ open, onClose, onSave }: Props) {
             <div>
               <label className="mb-1 block text-sm text-slate-700">Date</label>
               <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm text-slate-700">Time (optional)</label>
+              <input type="time" value={time} onChange={e=>setTime(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
             </div>
             <div>
               <label className="mb-1 block text-sm text-slate-700">Type</label>

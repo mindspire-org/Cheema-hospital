@@ -70,11 +70,29 @@ export async function create(req: Request, res: Response){
     if (!comp) return res.status(400).json({ error: 'Invalid corporateId' })
     if ((comp as any).active === false) return res.status(400).json({ error: 'Corporate company inactive' })
   }
+  // Merge manual consumables with test-defined defaults
+  let combinedConsumables: Array<{ item: string; qty: number }> = []
+  try {
+    const manual = Array.isArray((data as any).consumables) ? (data as any).consumables : []
+    const testIds = Array.isArray((data as any).tests) ? (data as any).tests : []
+    const tests = await LabTest.find({ _id: { $in: testIds } }).lean()
+    const defaults = tests.flatMap((t: any) => Array.isArray(t?.consumables) ? t.consumables : [])
+    const all = [...manual, ...defaults]
+    const map = new Map<string, number>()
+    for (const c of all){
+      const key = String((c as any).item || '').trim().toLowerCase()
+      const qty = Math.max(0, Number((c as any).qty || 0))
+      if (!key || qty <= 0) continue
+      map.set(key, (map.get(key) || 0) + qty)
+    }
+    combinedConsumables = Array.from(map.entries()).map(([item, qty]) => ({ item, qty }))
+  } catch (e){ console.warn('Failed to merge test consumables', e); combinedConsumables = Array.isArray((data as any).consumables)? (data as any).consumables as any : [] }
+
   const tokenNo = (data as any).tokenNo || await nextToken(new Date())
-  const doc = await LabOrder.create({ ...data, tokenNo, status: 'received' })
+  const doc = await LabOrder.create({ ...data, consumables: combinedConsumables, tokenNo, status: 'received' })
   // Deduct consumables from inventory (best-effort)
   try {
-    const cons = Array.isArray(data.consumables) ? data.consumables : []
+    const cons = Array.isArray(combinedConsumables) ? combinedConsumables : []
     await Promise.all(cons.map(async (c: any) => {
       const key = String(c.item || '').trim().toLowerCase()
       const qty = Math.max(0, Number(c.qty || 0))
@@ -152,11 +170,12 @@ export async function create(req: Request, res: Response){
 export async function updateTrack(req: Request, res: Response){
   const { id } = req.params
   const patch = orderTrackUpdateSchema.parse(req.body)
+  const before: any = await LabOrder.findById(id).lean()
   const doc = await LabOrder.findByIdAndUpdate(id, { $set: patch }, { new: true })
   if (!doc) return res.status(404).json({ message: 'Order not found' })
   // Corporate: on returned, create reversals for all items
   try {
-    if ((patch as any).status === 'returned'){
+    if ((patch as any).status === 'returned' && String(before?.status) !== 'returned'){
       const existing: any[] = await CorporateTransaction.find({ refType: 'lab_order', refId: String(id), status: { $ne: 'reversed' } }).lean()
       for (const tx of existing){
         try { await CorporateTransaction.findByIdAndUpdate(String(tx._id), { $set: { status: 'reversed' } }) } catch {}
@@ -184,6 +203,22 @@ export async function updateTrack(req: Request, res: Response){
       }
     }
   } catch (e) { console.warn('Corporate reversal (lab updateTrack) failed', e) }
+  // Inventory: on returned, restore consumables once per transition
+  try {
+    if ((patch as any).status === 'returned' && String(before?.status) !== 'returned'){
+      const cons: any[] = Array.isArray((doc as any)?.consumables) ? (doc as any).consumables : []
+      await Promise.all(cons.map(async (c: any) => {
+        const key = String(c.item || '').trim().toLowerCase()
+        const qty = Math.max(0, Number(c.qty || 0))
+        if (!key || qty <= 0) return
+        const it = await (LabInventoryItem as any).findOne({ key })
+        if (!it) return
+        const cur = Math.max(0, Number(it.onHand || 0))
+        it.onHand = cur + qty
+        await it.save()
+      }))
+    }
+  } catch (e) { console.warn('Inventory restore (lab updateTrack) failed', e) }
   try {
     const actor = (req as any).user?.name || (req as any).user?.email || 'system'
     const keys = ['status','sampleTime','reportingTime']

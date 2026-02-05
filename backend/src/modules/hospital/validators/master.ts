@@ -25,6 +25,7 @@ export const upsertDoctorSchema = z.object({
   specialization: z.string().optional(),
   qualification: z.string().optional(),
   cnic: z.string().optional(),
+  pmdcNo: z.string().optional(),
   shares: z.number().min(0).optional(),
   active: z.boolean().optional(),
 })

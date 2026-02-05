@@ -6,12 +6,23 @@ export async function list(req: Request, res: Response){
   const parsed = procedureCatalogQuerySchema.safeParse(req.query)
   const { search, page = 1, limit = 50 } = parsed.success ? parsed.data as any : { page: 1, limit: 50 }
   const filter: any = {}
-  if (search) filter.name = { $regex: new RegExp(search, 'i') }
+  const s = String(search||'').trim()
+  const useText = s.length >= 2
+  if (s){
+    if (useText){
+      filter.$text = { $search: s }
+    } else {
+      filter.name = { $regex: new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') }
+    }
+  }
   const pg = Math.max(1, Number(page||1))
   const lim = Math.max(1, Math.min(500, Number(limit||50)))
   const skip = (pg - 1) * lim
+  const baseFind = useText
+    ? ProcedureCatalog.find(filter, { score: { $meta: 'textScore' } }).sort({ score: { $meta: 'textScore' }, createdAt: -1 })
+    : ProcedureCatalog.find(filter).sort({ createdAt: -1 })
   const [items, total] = await Promise.all([
-    ProcedureCatalog.find(filter).sort({ createdAt: -1 }).skip(skip).limit(lim).lean(),
+    baseFind.skip(skip).limit(lim).lean(),
     ProcedureCatalog.countDocuments(filter),
   ])
   const totalPages = Math.max(1, Math.ceil((total||0)/lim))

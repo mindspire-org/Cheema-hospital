@@ -16,7 +16,7 @@ export async function create(req: Request, res: Response){
   const exists = await AestheticUser.findOne({ username: data.username }).lean()
   if (exists) return res.status(400).json({ error: 'Username already exists' })
   const passwordHash = await bcrypt.hash(data.password, 10)
-  const u = await AestheticUser.create({ username: data.username, role: data.role, passwordHash })
+  const u = await AestheticUser.create({ username: data.username, role: data.role, passwordHash, permissions: data.permissions || [] })
   try {
     const actor = (req as any).user?.name || (req as any).user?.email || 'system'
     await AuditLog.create({
@@ -41,6 +41,7 @@ export async function update(req: Request, res: Response){
   if (data.username) patch.username = data.username
   if (data.role) patch.role = data.role
   if (data.password) patch.passwordHash = await bcrypt.hash(data.password, 10)
+  if (data.permissions) patch.permissions = data.permissions
   const u = await AestheticUser.findByIdAndUpdate(id, patch, { new: true })
   res.json(u)
 }

@@ -1,7 +1,6 @@
 import { Request, Response } from 'express'
 import { LabPatient } from '../models/Patient'
-import { LabCounter } from '../models/Counter'
-import { HospitalSettings } from '../../hospital/models/Settings'
+import { nextGlobalMrn } from '../../../common/mrn'
 import { patientFindOrCreateSchema } from '../validators/patient'
 
 function normDigits(s?: string){ return (s||'').replace(/\D+/g,'') }
@@ -15,45 +14,6 @@ export async function getByMrn(req: Request, res: Response){
 }
 function normLower(s?: string){ return (s||'').trim().toLowerCase().replace(/\s+/g,' ') }
 
-async function nextMrn(){
-  const now = new Date()
-  const year = now.getFullYear()
-  const yy = String(year).slice(-2)
-  const mm = String(now.getMonth()+1).padStart(2,'0')
-  const yymm = yy+mm
-  const key = `lab_mrn_${yymm}`
-  const c = await LabCounter.findByIdAndUpdate(key, { $inc: { seq: 1 } }, { upsert: true, new: true, setDefaultsOnInsert: true })
-  const seqNum = Number((c as any)?.seq || 1)
-
-  // Fetch hospital settings for MRN format
-  let fmt = ''
-  let hospCode = ''
-  try {
-    const s: any = await HospitalSettings.findOne().lean()
-    fmt = String(s?.mrFormat || '').trim()
-    hospCode = String(s?.code || '').trim()
-  } catch {}
-
-  // Build MRN using format if provided; else fallback to legacy
-  if (fmt) {
-    const widthMatch = fmt.match(/\{SERIAL(\d+)\}/i)
-    const width = widthMatch ? Math.max(1, parseInt(widthMatch[1], 10) || 6) : 6
-    const serial = String(seqNum).padStart(width, '0')
-    let out = fmt
-    out = out.replace(/\{HOSP\}/gi, hospCode || 'HOSP')
-    out = out.replace(/\{DEPT\}/gi, 'LAB')
-    out = out.replace(/\{YEAR\}/gi, String(year))
-    out = out.replace(/\{YYYY\}/gi, String(year))
-    out = out.replace(/\{YY\}/gi, yy)
-    out = out.replace(/\{MONTH\}/gi, mm)
-    out = out.replace(/\{MM\}/gi, mm)
-    out = out.replace(/\{SERIAL\d*\}/gi, serial)
-    return out
-  }
-
-  const seq = String(seqNum).padStart(6,'0')
-  return `MR-${yymm}-${seq}`
-}
 
 export async function findOrCreate(req: Request, res: Response){
   const data = patientFindOrCreateSchema.parse(req.body)
@@ -115,7 +75,7 @@ export async function findOrCreate(req: Request, res: Response){
     }
   }
 
-  const mrn = await nextMrn()
+  const mrn = await nextGlobalMrn()
   const nowIso = new Date().toISOString()
   const pat = await LabPatient.create({
     mrn,

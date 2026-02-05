@@ -8,7 +8,6 @@ type Settings = {
   address: string
   logoDataUrl?: string
   code: string
-  mrFormat: string
   slipFooter?: string
 }
 
@@ -19,7 +18,6 @@ export default function Hospital_Settings() {
     address: 'Hospital Address, City, Country',
     logoDataUrl: undefined,
     code: 'SAFH',
-    mrFormat: '{HOSP}/{DEPT}/{YEAR}/{MONTH}/{SERIAL}',
     slipFooter: 'Powered by Hospital MIS',
   })
   const [savedBanner, setSavedBanner] = useState<string>('')
@@ -117,11 +115,7 @@ export default function Hospital_Settings() {
               <label className="mb-1 block text-sm font-medium text-slate-700">Hospital Code</label>
               <input value={settings.code} onChange={e=>update('code', e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
             </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">MR Number Format</label>
-              <input value={settings.mrFormat} onChange={e=>update('mrFormat', e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
-              <p className="mt-1 text-xs text-slate-500">Example: SAFH/OPD/2025/06/001</p>
-            </div>
+            
           </div>
 
           <div className="border-t border-slate-200 px-4 py-3">

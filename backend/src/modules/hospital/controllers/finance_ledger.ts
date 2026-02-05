@@ -4,9 +4,7 @@ import { HospitalDoctor } from '../models/Doctor'
 
 function todayIso(){
   const now = new Date()
-  const d = new Date(now)
-  if (now.getHours() >= 12) d.setDate(d.getDate() + 1)
-  return d.toISOString().slice(0,10)
+  return now.toISOString().slice(0,10)
 }
 
 function toOid(id?: string){
@@ -58,9 +56,10 @@ export async function manualDoctorEarning(data: { doctorId: string; departmentId
 }
 
 export async function postOpdTokenJournal(args: { tokenId: string; dateIso: string; fee: number; doctorId?: string; departmentId?: string; patientId?: string; patientName?: string; mrn?: string; tokenNo?: string; paidMethod?: 'Cash'|'Bank'|'AR'; sessionId?: string }){
-  // Idempotency: avoid duplicate posting for same token
-  const existing = await FinanceJournal.findOne({ refType: 'opd_token', refId: args.tokenId }).lean()
-  if (existing) return existing as any
+  // Idempotency with reversals: if latest OPD exists after the latest reversal, reuse it; otherwise allow a fresh post
+  const lastOpd: any = await FinanceJournal.findOne({ refType: 'opd_token', refId: args.tokenId }).sort({ createdAt: -1 }).lean()
+  const lastRev: any = await FinanceJournal.findOne({ refType: 'opd_token_reversal', refId: args.tokenId }).sort({ createdAt: -1 }).lean()
+  if (lastOpd && (!lastRev || new Date(lastOpd.createdAt) > new Date(lastRev.createdAt))) return lastOpd as any
   const doc: any = args.doctorId ? await HospitalDoctor.findById(args.doctorId).lean() : null
   const percent = (doc as any)?.shares ?? 100
   const share = round2((args.fee || 0) * (Math.max(percent,0) / 100))

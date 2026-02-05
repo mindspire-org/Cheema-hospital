@@ -15,6 +15,7 @@ export const dispenseCreateSchema = z.object({
   discountPct: z.coerce.number().nonnegative().default(0),
   lineDiscountTotal: z.coerce.number().nonnegative().default(0).optional(),
   lines: z.array(dispenseLineSchema).min(1),
+  createdBy: z.string().optional(),
 })
 
 export const salesQuerySchema = z.object({
@@ -23,6 +24,7 @@ export const salesQuerySchema = z.object({
   customerId: z.string().optional(),
   payment: z.enum(['Any','Cash','Card','Credit']).default('Any').optional(),
   medicine: z.string().optional(),
+  user: z.string().optional(),
   from: z.string().optional(),
   to: z.string().optional(),
   page: z.coerce.number().int().positive().optional(),

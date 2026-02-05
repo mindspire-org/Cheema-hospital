@@ -51,6 +51,7 @@ export async function create(req: Request, res: Response){
     total: Number(total.toFixed(2)),
     lines: linesWithCost,
     profit: Number(profit.toFixed(2)),
+    createdBy: String((data as any)?.createdBy || '').trim() || undefined,
   })
 
   for (const line of data.lines){
@@ -79,7 +80,7 @@ export async function create(req: Request, res: Response){
     }
   }
   try {
-    const actor = (req as any).user?.name || (req as any).user?.email || 'system'
+    const actor = String((data as any)?.createdBy || (req as any).user?.name || (req as any).user?.email || 'system')
     await AuditLog.create({
       actor,
       action: 'Sale',
@@ -95,18 +96,21 @@ export async function create(req: Request, res: Response){
 
 export async function list(req: Request, res: Response){
   const parsed = salesQuerySchema.safeParse(req.query)
-  const { bill, customer, customerId, payment, medicine, from, to, page, limit } = parsed.success ? parsed.data as any : {}
+  const { bill, customer, customerId, payment, medicine, user, from, to, page, limit } = parsed.success ? parsed.data as any : {}
   const filter: any = {}
   if (bill) filter.billNo = new RegExp(bill, 'i')
   if (customer) filter.customer = new RegExp(customer, 'i')
   if (customerId) filter.customerId = customerId
   if (payment && payment !== 'Any') filter.payment = payment
   if (medicine) filter['lines.name'] = new RegExp(medicine, 'i')
+  if (user) filter.createdBy = new RegExp(user, 'i')
   if (from || to){
     filter.datetime = {}
     if (from) filter.datetime.$gte = new Date(from).toISOString()
     if (to) {
-      const end = new Date(to); end.setHours(23,59,59,999)
+      const hasTime = /T\d{2}:\d{2}/.test(String(to))
+      const end = new Date(to)
+      if (!hasTime) end.setHours(23,59,59,999)
       filter.datetime.$lte = end.toISOString()
     }
   }
@@ -128,7 +132,9 @@ export async function summary(req: Request, res: Response){
     match.datetime = {}
     if (from) match.datetime.$gte = new Date(from).toISOString()
     if (to) {
-      const end = new Date(to); end.setHours(23,59,59,999)
+      const hasTime = /T\d{2}:\d{2}/.test(String(to))
+      const end = new Date(to)
+      if (!hasTime) end.setHours(23,59,59,999)
       match.datetime.$lte = end.toISOString()
     }
   }

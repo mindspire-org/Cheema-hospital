@@ -1,20 +1,7 @@
-function resolveKey(name: string){
-  const n = (name||'').toLowerCase()
-  if (n.includes('ultrasound')) return 'Ultrasound'
-  if (n.replace(/\s+/g,'') === 'ctscan') return 'CTScan'
-  if (n.includes('echocardio')) return 'Echocardiography'
-  if (n.includes('colonoscopy')) return 'Colonoscopy'
-  if (n.includes('uppergi')) return 'UpperGiEndoscopy'
-  return name
-}
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { diagnosticApi } from '../../utils/api'
-import { printEchocardiographyReport } from '../../components/diagnostic/diagnostic_Echocardiography'
-import { printUltrasoundReport } from '../../components/diagnostic/diagnostic_UltrasoundGeneric'
-import { printCTScanReport } from '../../components/diagnostic/diagnostic_CTScan'
-import { printColonoscopyReport } from '../../components/diagnostic/diagnostic_Colonoscopy'
-import { printUpperGIEndoscopyReport } from '../../components/diagnostic/diagnostic_UpperGIEndoscopy'
+import { DiagnosticTemplateRegistry } from '../../components/diagnostic/registry'
 
 type Result = { id: string; tokenNo?: string; testName: string; patient?: any; status: 'draft'|'final'; reportedAt?: string; formData?: string; createdAt?: string; orderId?: string; testId?: string }
 
@@ -30,6 +17,7 @@ export default function Diagnostic_ReportGenerator(){
   const [items, setItems] = useState<Result[]>([])
   const [total, setTotal] = useState(0)
   const [totalPages, setTotalPages] = useState(1)
+  const [templateMappings, setTemplateMappings] = useState<Array<{ testId: string; templateKey: string }>>([])
 
   useEffect(()=>{ let mounted = true; (async()=>{
     try {
@@ -39,33 +27,25 @@ export default function Diagnostic_ReportGenerator(){
     } catch { if (mounted){ setItems([]); setTotal(0); setTotalPages(1) } }
   })(); return ()=>{ mounted=false } }, [q, from, to, status, page, rows])
 
+  useEffect(()=>{ (async()=>{
+    try {
+      const s = await diagnosticApi.getSettings() as any
+      const arr = Array.isArray(s?.templateMappings) ? s.templateMappings : []
+      setTemplateMappings(arr.map((x:any)=> ({ testId: String(x.testId||''), templateKey: String(x.templateKey||'') })))
+    } catch { setTemplateMappings([]) }
+  })() }, [])
+
   const pageCount = Math.max(1, totalPages)
   const curPage = Math.min(page, pageCount)
   const start = Math.min((curPage - 1) * rows + 1, total)
   const end = Math.min((curPage - 1) * rows + items.length, total)
 
   async function printItem(r: Result){
-    const key = resolveKey(r.testName)
-    if (key === 'Echocardiography'){
-      await printEchocardiographyReport({ tokenNo: r.tokenNo, createdAt: r.createdAt, reportedAt: r.reportedAt||r.createdAt, patient: r.patient as any, value: r.formData||'', referringConsultant: (r as any)?.patient?.referringConsultant })
-      return
-    }
-    if (key === 'Ultrasound'){
-      await printUltrasoundReport({ tokenNo: r.tokenNo, createdAt: r.createdAt, reportedAt: r.reportedAt||r.createdAt, patient: r.patient as any, value: r.formData||'', referringConsultant: (r as any)?.patient?.referringConsultant })
-      return
-    }
-    if (key === 'CTScan'){
-      await printCTScanReport({ tokenNo: r.tokenNo, createdAt: r.createdAt, reportedAt: r.reportedAt||r.createdAt, patient: r.patient as any, value: r.formData||'', referringConsultant: (r as any)?.patient?.referringConsultant })
-      return
-    }
-    if (key === 'Colonoscopy'){
-      await printColonoscopyReport({ tokenNo: r.tokenNo, createdAt: r.createdAt, reportedAt: r.reportedAt||r.createdAt, patient: r.patient as any, value: r.formData||'', referringConsultant: (r as any)?.patient?.referringConsultant })
-      return
-    }
-    if (key === 'UpperGiEndoscopy'){
-      await printUpperGIEndoscopyReport({ tokenNo: r.tokenNo, createdAt: r.createdAt, reportedAt: r.reportedAt||r.createdAt, patient: r.patient as any, value: r.formData||'', referringConsultant: (r as any)?.patient?.referringConsultant })
-      return
-    }
+    const mapped = (templateMappings||[]).find(m=> String(m.testId) === String(r.testId))
+    const key = mapped?.templateKey
+    const tpl = key ? (DiagnosticTemplateRegistry as any)[key] : null
+    if (!tpl || !tpl.print){ alert('No report template mapped for this test. Please set mapping in Diagnostic Settings.'); return }
+    await tpl.print({ tokenNo: r.tokenNo, createdAt: r.createdAt, reportedAt: r.reportedAt||r.createdAt, patient: r.patient as any, value: r.formData||'', referringConsultant: (r as any)?.patient?.referringConsultant })
   }
 
   function editItem(r: Result){

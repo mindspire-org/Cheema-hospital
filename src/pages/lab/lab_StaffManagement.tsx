@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import Lab_AddStaffDialog, { type PharmacyStaff } from '../../components/lab/lab_AddStaffDialog'
+import Lab_StaffEarningsDialog from '../../components/lab/lab_StaffEarningsDialog'
 import { labApi } from '../../utils/api'
 
 type Shift = { id: string; name: string }
@@ -18,6 +19,8 @@ export default function Pharmacy_StaffManagement(){
   const [notice, setNotice] = useState<{ text: string; kind: 'success'|'error' } | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [earningsOpen, setEarningsOpen] = useState(false)
+  const [earningsStaff, setEarningsStaff] = useState<{ id: string; name: string } | null>(null)
 
   useEffect(()=>{
     let mounted = true
@@ -121,6 +124,7 @@ export default function Pharmacy_StaffManagement(){
                   <td className="px-4 py-2">
                     <div className="flex items-center gap-2">
                       <button onClick={()=>openEdit(s)} className="rounded-md bg-sky-600 px-2 py-1 text-xs text-white hover:bg-sky-700">Edit</button>
+                      <button onClick={()=>{ setEarningsStaff({ id: s.id, name: s.name }); setEarningsOpen(true) }} className="rounded-md bg-emerald-600 px-2 py-1 text-xs text-white hover:bg-emerald-700">Earnings</button>
                       <button onClick={()=>requestDelete(s.id)} className="rounded-md bg-rose-600 px-2 py-1 text-xs text-white hover:bg-rose-700">Delete</button>
                     </div>
                   </td>
@@ -150,6 +154,13 @@ export default function Pharmacy_StaffManagement(){
 
       <Lab_AddStaffDialog open={addOpen} onClose={()=>setAddOpen(false)} onSave={addStaff} />
       <Lab_AddStaffDialog open={editOpen} onClose={()=>setEditOpen(false)} onSave={saveEdit} initial={editing ?? undefined} title="Edit Staff" submitLabel="Save" />
+      {earningsStaff && (
+        <Lab_StaffEarningsDialog
+          open={earningsOpen}
+          onClose={()=>{ setEarningsOpen(false); setEarningsStaff(null) }}
+          staff={{ id: earningsStaff.id, name: earningsStaff.name }}
+        />
+      )}
 
       {deleteOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">

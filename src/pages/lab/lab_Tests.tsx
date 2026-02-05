@@ -14,6 +14,7 @@ type LabTest = {
   normalRangeFemale?: string
   normalRangePediatric?: string
   parameters?: Array<{ name: string; unit?: string; normalRangeMale?: string; normalRangeFemale?: string; normalRangePediatric?: string }>
+  consumables?: Array<{ item: string; qty: number }>
   createdAt: string
 }
 
@@ -53,6 +54,7 @@ export default function Lab_Tests() {
           normalRangeFemale: x.normalRangeFemale,
           normalRangePediatric: x.normalRangePediatric,
           parameters: Array.isArray(x.parameters)? x.parameters : [],
+          consumables: Array.isArray(x.consumables)? x.consumables : [],
           createdAt: x.createdAt || new Date().toISOString(),
         }))
         setTests(list)
@@ -82,6 +84,7 @@ export default function Lab_Tests() {
         normalRangeFemale: values.normalRangeFemale,
         normalRangePediatric: values.normalRangePediatric,
         parameters: values.parameters || [],
+        consumables: values.consumables || [],
       })
       setEditing(null)
     } else {
@@ -94,6 +97,7 @@ export default function Lab_Tests() {
         normalRangeFemale: values.normalRangeFemale,
         normalRangePediatric: values.normalRangePediatric,
         parameters: values.parameters || [],
+        consumables: values.consumables || [],
       })
     }
     setOpenModal(false)
@@ -291,6 +295,7 @@ export default function Lab_Tests() {
           normalRangeFemale: editing.normalRangeFemale,
           normalRangePediatric: editing.normalRangePediatric,
           parameters: editing.parameters || [],
+          consumables: editing.consumables || [],
         } : undefined}
       />
 

@@ -34,6 +34,8 @@ type NavItem = { to: string; label: string; end?: boolean; icon: LucideIcon }
 
 const navTop: NavItem[] = [
   { to: '/hospital', label: 'Dashboard', icon: LayoutDashboard, end: true },
+  { to: '/hospital/appointments', label: 'Appointments', icon: Calendar },
+  { to: '/hospital/finance/cash-sessions', label: 'Cash Sessions', icon: Wallet },
   { to: '/hospital/token-generator', label: 'Token Generator', icon: PlusCircle },
   { to: '/hospital/today-tokens', label: "Today's Tokens", icon: Ticket },
   { to: '/hospital/token-history', label: 'Token History', icon: History },
@@ -59,6 +61,8 @@ const groups: { label: string; icon: LucideIcon; items: NavItem[] }[] = [
       { to: '/hospital/patient-list', label: 'Patient List', icon: Users },
       { to: '/hospital/ipd-referrals', label: 'Referrals', icon: Activity },
       { to: '/hospital/discharged', label: 'Discharged', icon: LogOut },
+      { to: '/hospital/ipd-billing', label: 'IPD Billing', icon: ReceiptText },
+      { to: '/hospital/ipd-transactions', label: 'Recent IPD Payments', icon: CreditCard },
     ],
   },
   {
@@ -90,9 +94,17 @@ const groups: { label: string; icon: LucideIcon; items: NavItem[] }[] = [
     items: [
       { to: '/hospital/doctors', label: 'Add Doctors', icon: Stethoscope },
       { to: '/hospital/doctor-schedules', label: 'Doctor Schedules', icon: CalendarDays },
-      { to: '/hospital/appointments', label: 'Appointments', icon: Calendar },
       { to: '/hospital/finance/doctors', label: 'Doctors Finance', icon: Wallet },
       { to: '/hospital/finance/doctor-payouts', label: 'Doctor Payouts', icon: CreditCard },
+    ],
+  },
+  {
+    label: 'Expense Management',
+    icon: ReceiptText,
+    items: [
+      { to: '/hospital/finance/add-expense', label: 'Add Expense', icon: ReceiptText },
+      { to: '/hospital/finance/transactions', label: 'Transactions', icon: CreditCard },
+      { to: '/hospital/finance/expenses', label: 'Expense History', icon: ReceiptText },
     ],
   },
   {
@@ -113,29 +125,6 @@ const groups: { label: string; icon: LucideIcon; items: NavItem[] }[] = [
       { to: '/hospital/store-management', label: 'Store Management', icon: Boxes },
     ],
   },
-  {
-    label: 'Expense Management',
-    icon: ReceiptText,
-    items: [
-      { to: '/hospital/finance/add-expense', label: 'Add Expense', icon: ReceiptText },
-      { to: '/hospital/finance/expenses', label: 'Expense History', icon: ReceiptText },
-      { to: '/hospital/finance/cash-sessions', label: 'Cash Sessions', icon: Wallet },
-      { to: '/hospital/finance/transactions', label: 'Transactions', icon: CreditCard },
-    ],
-  },
-  {
-    label: 'Corporate Panel',
-    icon: Building2,
-    items: [
-      { to: '/hospital/corporate', label: 'Corporate Dashboard', icon: LayoutDashboard },
-      { to: '/hospital/corporate/companies', label: 'Companies', icon: Building2 },
-      { to: '/hospital/corporate/rate-rules', label: 'Rate Rules', icon: Settings },
-      { to: '/hospital/corporate/transactions', label: 'Transactions', icon: ReceiptText },
-      { to: '/hospital/corporate/claims', label: 'Claims', icon: ReceiptText },
-      { to: '/hospital/corporate/payments', label: 'Payments', icon: CreditCard },
-      { to: '/hospital/corporate/reports', label: 'Reports', icon: Database },
-    ],
-  },
 ]
 
 export const hospitalSidebarNav: NavItem[] = [
@@ -150,7 +139,7 @@ export default function Hospital_Sidebar({ collapsed = false }: { collapsed?: bo
   const [open, setOpen] = useState<Record<string, boolean>>({})
   const [role, setRole] = useState<string>('admin')
   const [permMap, setPermMap] = useState<Map<string, any>>(new Map())
-  const width = collapsed ? 'md:w-16' : 'md:w-64'
+  const width = collapsed ? 'md:w-16' : 'md:w-72'
   const isGroupActive = (items: NavItem[]) => items.some(i => pathname.startsWith(i.to))
 
   useEffect(()=>{
@@ -192,14 +181,14 @@ export default function Hospital_Sidebar({ collapsed = false }: { collapsed?: bo
   }
   return (
     <aside
-      className={`hidden md:flex ${width} md:flex-col md:border-r md:text-white`}
+      className={`hidden md:flex ${width} md:flex-col md:border-r md:text-white overflow-x-hidden`}
       style={{ background: 'linear-gradient(180deg, var(--navy) 0%, var(--navy-700) 100%)', borderColor: 'rgba(255,255,255,0.12)' }}
     >
       <div className="h-16 px-4 flex items-center border-b" style={{ borderColor: 'rgba(255,255,255,0.12)' }}>
         <div className="font-semibold">{collapsed ? 'SB' : 'SideBar'}</div>
         {!collapsed && <div className="ml-auto text-xs opacity-80">admin</div>}
       </div>
-      <nav className="flex-1 overflow-y-auto p-3 space-y-1">
+      <nav className="flex-1 overflow-y-auto overflow-x-hidden p-3 space-y-1">
         {[...navTop].filter(i=>canShow(i.to)).sort(byOrder).map(item => {
           const Icon = item.icon
           return (

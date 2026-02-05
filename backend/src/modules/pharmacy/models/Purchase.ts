@@ -25,6 +25,8 @@ const PurchaseSchema = new Schema({
   invoice: { type: String, required: true, index: true },
   supplierId: { type: String },
   supplierName: { type: String },
+  companyId: { type: String },
+  companyName: { type: String },
   totals: {
     gross: { type: Number, default: 0 },
     discount: { type: Number, default: 0 },
@@ -43,6 +45,8 @@ export type PurchaseDoc = {
   invoice: string
   supplierId?: string
   supplierName?: string
+  companyId?: string
+  companyName?: string
   totals?: { gross:number; discount:number; taxable:number; lineTaxes:number; invoiceTaxes:number; net:number }
   totalAmount: number
   lines: {

@@ -42,11 +42,11 @@ export default function Aesthetic_Layout(){
   return (
     <div className={theme === 'dark' ? 'aesthetic-scope dark' : 'aesthetic-scope'}>
       <div className={shell}>
-        <div className="flex">
+        <div className="flex h-[100dvh] overflow-hidden">
           <Aesthetic_Sidebar collapsed={collapsed} />
-          <div className="flex min-h-dvh flex-1 flex-col">
+          <div className="flex h-[100dvh] flex-1 flex-col overflow-hidden">
             <Aesthetic_Header onToggleSidebar={()=> setCollapsed(c=>!c)} onToggleTheme={()=> setTheme(t=> t==='dark'?'light':'dark')} theme={theme} onLogout={onLogout} username={username} />
-            <main className="w-full flex-1 px-2 py-4">
+            <main className="w-full flex-1 overflow-y-auto px-2 py-4">
               <Outlet />
             </main>
           </div>

@@ -14,6 +14,7 @@ type Product = {
   unitPrice: number
   stock: number
   barcode?: string
+  defaultDiscountPct?: number
 }
 
 type CartLine = {
@@ -44,6 +45,17 @@ export default function Pharmacy_POS() {
   
   const [receiptItems, setReceiptItems] = useState<Array<{ name: string; qty: number; price: number }>>([])
   const [billDiscountPct, setBillDiscountPct] = useState<number>(0)
+  // Current pharmacy username to stamp sales
+  const currentUser = useMemo(() => {
+    try {
+      const raw = localStorage.getItem('pharmacy.user')
+      if (raw) {
+        const u = JSON.parse(raw)
+        if (u && typeof u.username === 'string') return u.username
+      }
+    } catch {}
+    try { return localStorage.getItem('pharma_user') || '' } catch { return '' }
+  }, [])
 
   // Held bills (server-side persistence)
   type HeldBill = { _id: string; createdAtIso?: string; createdAt?: string; billDiscountPct?: number; lines?: Array<{ medicineId: string; name: string; unitPrice: number; qty: number; discountRs?: number }> }
@@ -136,6 +148,7 @@ export default function Pharmacy_POS() {
           unitPrice: Number(it.lastSalePerUnit || ((it.unitsPerPack && it.lastSalePerPack) ? it.lastSalePerPack/it.unitsPerPack : 0)),
           stock: Number(it.onHand || 0),
           barcode: it.barcode || undefined,
+          defaultDiscountPct: Number(it.defaultDiscountPct || 0),
         }))
         setProducts(mapped)
         setProductIndex(prev => {
@@ -212,7 +225,7 @@ export default function Pharmacy_POS() {
       }
       const id = crypto.randomUUID()
       if (opts?.focusQty !== false) { pendingFocusLineIdRef.current = id } else { pendingFocusLineIdRef.current = null }
-      return [...prev, { id, productId: pid, name: p.name, unitPrice: p.unitPrice, qty: 1, discountPct: 0 }]
+      return [...prev, { id, productId: pid, name: p.name, unitPrice: p.unitPrice, qty: 1, discountPct: Math.max(0, Math.min(100, Number(p.defaultDiscountPct||0))) }]
     })
   }
 
@@ -282,6 +295,7 @@ export default function Pharmacy_POS() {
             unitPrice: Number(it.lastSalePerUnit || ((it.unitsPerPack && it.lastSalePerPack) ? it.lastSalePerPack/it.unitsPerPack : 0)),
             stock: Number(it.onHand || 0),
             barcode: it.barcode || undefined,
+            defaultDiscountPct: Number(it.defaultDiscountPct || 0),
           }
           fresh.push(mapped)
         } catch {}
@@ -337,6 +351,7 @@ export default function Pharmacy_POS() {
           return s + disc
         }, 0),
         lines,
+        createdBy: currentUser || undefined,
       }
       const created = await pharmacyApi.createSale(payload)
       setReceiptNo(created.billNo)

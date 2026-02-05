@@ -15,6 +15,7 @@ export const testCreateSchema = z.object({
     normalRangeFemale: z.string().optional(),
     normalRangePediatric: z.string().optional(),
   })).optional().default([]),
+  consumables: z.array(z.object({ item: z.string().min(1), qty: z.coerce.number().int().positive() })).optional().default([]),
 })
 
 export const testUpdateSchema = testCreateSchema.partial()

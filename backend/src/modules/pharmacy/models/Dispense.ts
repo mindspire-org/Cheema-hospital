@@ -21,6 +21,7 @@ const DispenseSchema = new Schema({
   total: { type: Number, required: true },
   lines: { type: [LineSchema], default: [] },
   profit: { type: Number, default: 0 },
+  createdBy: { type: String },
 }, { timestamps: true, collection: 'pharmacy_dispenses' })
 
 export type DispenseDoc = {
@@ -35,6 +36,7 @@ export type DispenseDoc = {
   subtotal: number
   total: number
   profit?: number
+  createdBy?: string
   lines: { medicineId: string; name: string; unitPrice: number; qty: number; costPerUnit?: number; discountRs?: number }[]
 }
 

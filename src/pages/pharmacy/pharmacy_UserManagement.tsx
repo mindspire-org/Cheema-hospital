@@ -8,12 +8,12 @@ export default function Pharmacy_UserManagement() {
   const navigate = useNavigate()
   const [users, setUsers] = useState<User[]>([])
   const [newUsername, setNewUsername] = useState('')
-  const [newRole, setNewRole] = useState<User['role']>('salesman')
+  const [newRole, setNewRole] = useState<User['role']>('')
   const [newPassword, setNewPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [editing, setEditing] = useState<{ _id: string; username: string; role: User['role'] } | null>(null)
   const [savingEdit, setSavingEdit] = useState(false)
-  const [roles, setRoles] = useState<string[]>(['admin', 'pharmacist', 'salesman'])
+  const [roles, setRoles] = useState<string[]>([])
   const [newRoleName, setNewRoleName] = useState('')
   const [creatingRole, setCreatingRole] = useState(false)
   const [addUserError, setAddUserError] = useState('')
@@ -28,7 +28,10 @@ export default function Pharmacy_UserManagement() {
 
       if (rolesRes.status === 'fulfilled') {
         const list = (rolesRes.value?.items || []) as string[]
-        if (Array.isArray(list) && list.length) setRoles(list)
+        if (Array.isArray(list)) {
+          setRoles(list)
+          if (!newRole && list.length) setNewRole(list[0] as User['role'])
+        }
       }
 
       if (usersRes.status === 'fulfilled') {
@@ -59,6 +62,10 @@ export default function Pharmacy_UserManagement() {
       setAddUserError('Please enter username and password')
       return
     }
+    if (!newRole) {
+      setAddUserError('Please select a role (or create one first)')
+      return
+    }
     if (newUsername.trim().length < 3) {
       setAddUserError('Username must be at least 3 characters')
       return
@@ -72,7 +79,7 @@ export default function Pharmacy_UserManagement() {
       setUsers(prev => [...prev, created as User])
       setNewUsername('')
       setNewPassword('')
-      setNewRole('salesman')
+      setNewRole((roles[0] as any) || '')
     } catch (e: any) {
       let msg = e?.message || 'Failed to add user'
       try {
@@ -269,6 +276,7 @@ export default function Pharmacy_UserManagement() {
                     onChange={e=>setNewRole(e.target.value as User['role'])}
                     className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-200/60"
                   >
+                    {!newRole && <option value="" disabled>Select role</option>}
                     {(roles || []).map(r => (
                       <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>
                     ))}

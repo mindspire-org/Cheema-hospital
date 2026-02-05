@@ -27,7 +27,7 @@ export default function Aesthetic_AuditLogsPage(){
   }, [page])
 
   return (
-    <div className="max-w-6xl mx-auto space-y-3">
+    <div className="w-full space-y-3">
       <div className="text-lg font-semibold">Audit Logs</div>
       <div className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 overflow-hidden">
         <table className="min-w-full text-sm">

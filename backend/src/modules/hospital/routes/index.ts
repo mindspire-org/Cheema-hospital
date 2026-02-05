@@ -7,18 +7,21 @@ import * as Expense from '../controllers/expense.controller'
 import * as Tokens from '../controllers/tokens.controller'
 import * as BedMgmt from '../controllers/bed_mgmt.controller'
 import * as Shifts from '../controllers/shifts.controller'
+import * as StaffEarnings from '../controllers/staff_earnings.controller'
 import * as Attendance from '../controllers/attendance.controller'
 import * as Audit from '../controllers/audit.controller'
+import * as FinanceAudit from '../controllers/finance_audit.controller'
 import * as Settings from '../controllers/settings.controller'
 import * as FinanceCtl from '../controllers/finance.controller'
 import * as Referrals from '../controllers/referrals.controller'
 import * as FinanceAccounts from '../controllers/finance_accounts.controller'
+import { list as financeUsersList, create as financeUsersCreate, update as financeUsersUpdate, remove as financeUsersRemove, login as financeUsersLogin, logout as financeUsersLogout } from '../controllers/finance_users.controller'
+import * as FinanceSidebarPerms from '../controllers/finance_sidebarPermission.controller'
 import * as Patients from '../controllers/patients.controller'
 import * as IPDRec from '../controllers/ipd_records.controller'
 import * as Notifications from '../controllers/notifications.controller'
 import * as Master from '../controllers/master.controller'
 import * as Users from '../controllers/users.controller'
-import * as CashSession from '../controllers/cash_session.controller'
 import * as IpdReferrals from '../controllers/ipd_referrals.controller'
 import * as IpdDocs from '../controllers/ipd_docs.controller'
 import * as DocSchedules from '../controllers/doctor_schedule.controller'
@@ -37,6 +40,7 @@ r.put('/departments/:id', Master.updateDepartment)
 r.delete('/departments/:id', Master.removeDepartment)
 
 r.get('/doctors', Master.listDoctors)
+r.get('/doctors/:id', Master.getDoctorById)
 r.post('/doctors', Master.createDoctor)
 r.put('/doctors/:id', Master.updateDoctor)
 r.delete('/doctors/:id', Master.removeDoctor)
@@ -232,6 +236,12 @@ r.delete('/shifts/:id', Shifts.remove)
 r.get('/attendance', Attendance.list)
 r.post('/attendance', Attendance.upsert)
 
+// Staff Earnings
+r.get('/staff-earnings', StaffEarnings.list)
+r.post('/staff-earnings', StaffEarnings.create)
+r.put('/staff-earnings/:id', StaffEarnings.update)
+r.delete('/staff-earnings/:id', StaffEarnings.remove)
+
 // Expenses
 r.get('/expenses', Expense.list)
 r.post('/expenses', Expense.create)
@@ -271,20 +281,34 @@ r.post('/finance/recurring/:id/run', FinanceAccounts.runRecurring)
 // Finance Accounts: Combined Cash/Bank across modules
 r.get('/finance/combined-cash-bank', FinanceAccounts.combinedCashBank)
 
-// Finance Accounts: Business Day Open/Close
-r.get('/finance/day/status', FinanceAccounts.dayStatus)
-r.post('/finance/day/open', FinanceAccounts.openDay)
-r.post('/finance/day/close', FinanceAccounts.closeDay)
+ 
 
-// Cash Sessions (Drawer) — auth required
-r.get('/finance/cash-sessions/current', auth, CashSession.current)
-r.post('/finance/cash-sessions/open', auth, CashSession.open)
-r.post('/finance/cash-sessions/:id/close', auth, CashSession.close)
-r.get('/finance/cash-sessions', auth, CashSession.list)
+// Finance: Users (Finance module-specific)
+r.get('/finance/users', financeUsersList)
+r.post('/finance/users', financeUsersCreate)
+r.put('/finance/users/:id', financeUsersUpdate)
+r.delete('/finance/users/:id', financeUsersRemove)
+r.post('/finance/users/login', financeUsersLogin)
+r.post('/finance/users/logout', financeUsersLogout)
+
+// Finance: Sidebar Roles & Permissions (Finance module-specific)
+r.get('/finance/sidebar-roles', FinanceSidebarPerms.listRoles)
+r.post('/finance/sidebar-roles', FinanceSidebarPerms.createRole)
+r.delete('/finance/sidebar-roles/:role', FinanceSidebarPerms.deleteRole)
+
+r.get('/finance/sidebar-permissions', FinanceSidebarPerms.getPermissions)
+r.put('/finance/sidebar-permissions/:role', FinanceSidebarPerms.updatePermissions)
+r.post('/finance/sidebar-permissions/:role/reset', FinanceSidebarPerms.resetToDefaults)
+
+// Cash Sessions removed per requirements
 
 // Audit Logs
 r.get('/audit-logs', Audit.list)
 r.post('/audit-logs', Audit.create)
+
+// Finance: Audit Logs (finance-specific store)
+r.get('/finance/audit-logs', FinanceAudit.list)
+r.post('/finance/audit-logs', FinanceAudit.create)
 
 // Settings
 r.get('/settings', Settings.get)

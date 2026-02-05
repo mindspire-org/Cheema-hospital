@@ -1,6 +1,6 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { LogOut, BarChart3, FlaskConical, LayoutDashboard, Users, Activity, FileText, BookOpen, Receipt, Repeat, CalendarCheck, Scale, Store } from 'lucide-react'
-import { hospitalApi } from '../../utils/api'
+import { LogOut, BarChart3, FlaskConical, LayoutDashboard, Users, Activity, FileText, BookOpen, Receipt, Repeat, Scale, Store, Settings } from 'lucide-react'
+import { financeApi } from '../../utils/api'
 
 const nav = [
   { to: '/finance/pharmacy-reports', label: 'Pharmacy Reports', Icon: BarChart3 },
@@ -15,18 +15,20 @@ const nav = [
   { to: '/finance/vouchers', label: 'Vouchers', Icon: Receipt },
   { to: '/finance/recurring', label: 'Recurring Payments', Icon: Repeat },
   { to: '/finance/combined', label: 'Combined Summary', Icon: Activity },
-  { to: '/finance/business-day', label: 'Day Open/Close', Icon: CalendarCheck },
   { to: '/finance/liabilities', label: 'Liabilities', Icon: Scale },
+  { to: '/finance/audit-logs', label: 'Audit Logs', Icon: FileText },
+  { to: '/finance/sidebar-permissions', label: 'Sidebar Permissions', Icon: Settings },
+  { to: '/finance/user-management', label: 'User Management', Icon: Users },
 ]
+
+export const financeSidebarNav = nav
 
 export default function Finance_Sidebar({ collapsed = false }: { collapsed?: boolean }){
   const navigate = useNavigate()
   const width = collapsed ? 'md:w-16' : 'md:w-64'
   async function logout(){
     try {
-      const raw = localStorage.getItem('finance.session')
-      const u = raw ? JSON.parse(raw) : null
-      await hospitalApi.logoutHospitalUser(u?.username||'finance')
+      await financeApi.logout()
     } catch {}
     try { localStorage.removeItem('finance.session') } catch {}
     navigate('/finance/login')

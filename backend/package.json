@@ -7,7 +7,9 @@
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc -p .",
     "start": "node dist/server.js",
-    "seed:aesthetic-admin": "ts-node-dev --transpile-only src/seeds/aesthetic_admin.ts"
+    "seed:aesthetic-admin": "ts-node-dev --transpile-only src/seeds/aesthetic_admin.ts",
+    "import:lab-tests": "ts-node-dev --transpile-only src/scripts/import_lab_tests.ts",
+    "import:diagnostic-tests": "ts-node-dev --transpile-only src/scripts/import_diagnostic_tests.ts"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -19,6 +21,7 @@
     "mongoose": "^8.19.3",
     "morgan": "^1.10.1",
     "puppeteer": "^22.10.0",
+    "xlsx": "^0.18.5",
     "zod": "^3.25.76"
   },
   "devDependencies": {

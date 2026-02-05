@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react'
 import Pharmacy_AddExpenseDialog from '../../components/aesthetic/aesthetic_AddExpenseDialog'
 import { aestheticApi } from '../../utils/api'
+import Aesthetic_SalarySlipDialog from '../../components/aesthetic/aesthetic_SalarySlipDialog'
 
 type Expense = {
   id: string
   date: string // yyyy-mm-dd
+  datetime?: string // iso datetime
   type: 'Rent' | 'Utilities' | 'Supplies' | 'Salaries' | 'Maintenance' | 'Other'
   note: string
   amount: number
+  createdBy?: string
 }
 
 export default function Pharmacy_Expenses() {
@@ -16,6 +19,8 @@ export default function Pharmacy_Expenses() {
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [totalPages, setTotalPages] = useState(1)
+  const [slipOpen, setSlipOpen] = useState(false)
+  const [slipExpense, setSlipExpense] = useState<any>(null)
 
   // Filters
   const [from, setFrom] = useState('')
@@ -34,7 +39,7 @@ export default function Pharmacy_Expenses() {
       try {
         const res: any = await aestheticApi.listExpenses({ from: from || undefined, to: to || undefined, minAmount, search: search || undefined, type: etype === 'All Types' ? undefined : etype, page, limit })
         if (!mounted) return
-        const mapped: Expense[] = (res.items || []).map((x: any) => ({ id: x._id, date: x.date, type: x.type, note: x.note || '', amount: x.amount }))
+        const mapped: Expense[] = (res.items || []).map((x: any) => ({ id: x._id, date: x.date, datetime: x.datetime, type: x.type, note: x.note || '', amount: x.amount, createdBy: x.createdBy }))
         setItems(mapped)
         setTotal(Number(res.total || mapped.length || 0))
         setTotalPages(Number(res.totalPages || 1))
@@ -45,6 +50,13 @@ export default function Pharmacy_Expenses() {
     return () => { mounted = false }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tick, from, to, minAmount, search, etype, page, limit])
+
+  // Refresh when salary payments trigger a global event
+  useEffect(()=>{
+    const onRefresh = () => setTick(t=>t+1)
+    try { window.addEventListener('aesthetic:expenses:refresh', onRefresh as any) } catch {}
+    return () => { try { window.removeEventListener('aesthetic:expenses:refresh', onRefresh as any) } catch {} }
+  }, [])
 
   const refresh = () => setTick(t=>t+1)
 
@@ -193,27 +205,34 @@ export default function Pharmacy_Expenses() {
             <thead className="bg-slate-50 text-slate-700">
               <tr>
                 <th className="px-4 py-2 font-medium">Date</th>
+                <th className="px-4 py-2 font-medium">Time</th>
                 <th className="px-4 py-2 font-medium">Type</th>
                 <th className="px-4 py-2 font-medium">Note</th>
                 <th className="px-4 py-2 font-medium">Amount</th>
-                <th className="px-4 py-2 font-medium"></th>
+                <th className="px-4 py-2 font-medium text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 text-slate-700">
               {items.map(e => (
                 <tr key={e.id}>
                   <td className="px-4 py-2">{e.date}</td>
+                  <td className="px-4 py-2">{e.datetime ? new Date(e.datetime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</td>
                   <td className="px-4 py-2">{e.type}</td>
                   <td className="px-4 py-2">{e.note}</td>
                   <td className="px-4 py-2 font-semibold">PKR {e.amount.toLocaleString()}</td>
                   <td className="px-4 py-2 text-right">
-                    <button onClick={()=>remove(e.id)} className="rounded-md bg-rose-600 px-2 py-1 text-xs text-white hover:bg-rose-700">Delete</button>
+                    <div className="inline-flex items-center gap-2">
+                      {e.type === 'Salaries' && (
+                        <button onClick={()=>{ setSlipExpense(e); setSlipOpen(true) }} className="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50">Slip</button>
+                      )}
+                      <button onClick={()=>remove(e.id)} className="rounded-md bg-rose-600 px-2 py-1 text-xs text-white hover:bg-rose-700">Delete</button>
+                    </div>
                   </td>
                 </tr>
               ))}
               {items.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-12 text-center text-slate-500">No expenses found</td>
+                  <td colSpan={6} className="px-4 py-12 text-center text-slate-500">No expenses found</td>
                 </tr>
               )}
             </tbody>
@@ -243,6 +262,7 @@ export default function Pharmacy_Expenses() {
           refresh()
         }}
       />
+      <Aesthetic_SalarySlipDialog open={slipOpen} onClose={()=>setSlipOpen(false)} expense={slipExpense} />
     </div>
   )
 }

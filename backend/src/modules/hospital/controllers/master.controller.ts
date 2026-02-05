@@ -4,6 +4,7 @@ import { HospitalDepartment } from '../models/Department'
 import { HospitalDoctor } from '../models/Doctor'
 import { HospitalUser } from '../models/User'
 import { HospitalAuditLog } from '../models/AuditLog'
+import { Types } from 'mongoose'
 
 export async function listDepartments(_req: Request, res: Response){
   const rows = await HospitalDepartment.find().sort({ name: 1 }).lean()
@@ -12,7 +13,16 @@ export async function listDepartments(_req: Request, res: Response){
 
 export async function removeDoctor(req: Request, res: Response){
   const id = req.params.id
-  const d: any = await HospitalDoctor.findByIdAndDelete(id)
+  let d: any
+  if (Types.ObjectId.isValid(id)) {
+    d = await HospitalDoctor.findByIdAndDelete(id)
+  } else {
+    const candidates: any[] = [id]
+    const n = Number(id)
+    if (!Number.isNaN(n)) candidates.push(n)
+    const r = await HospitalDoctor.collection.findOneAndDelete({ _id: { $in: candidates } })
+    d = r?.value
+  }
   if (!d) return res.status(404).json({ error: 'Doctor not found' })
   // Also remove the corresponding Hospital User if present
   try {
@@ -64,6 +74,21 @@ export async function updateDepartment(req: Request, res: Response){
 export async function listDoctors(_req: Request, res: Response){
   const rows = await HospitalDoctor.find().sort({ name: 1 }).lean()
   res.json({ doctors: rows })
+}
+
+export async function getDoctorById(req: Request, res: Response){
+  const id = req.params.id
+  let d: any
+  if (Types.ObjectId.isValid(id)) {
+    d = await HospitalDoctor.findById(id).lean()
+  } else {
+    const candidates: any[] = [id]
+    const n = Number(id)
+    if (!Number.isNaN(n)) candidates.push(n)
+    d = await HospitalDoctor.collection.findOne({ _id: { $in: candidates } })
+  }
+  if (!d) return res.status(404).json({ error: 'Doctor not found' })
+  res.json({ doctor: d })
 }
 
 export async function createDoctor(req: Request, res: Response){
@@ -120,7 +145,16 @@ export async function createDoctor(req: Request, res: Response){
 export async function updateDoctor(req: Request, res: Response){
   const data = upsertDoctorSchema.parse(req.body)
   const { password, ...patch } = (data as any)
-  const prev: any = await HospitalDoctor.findById(req.params.id).lean()
+  const id = req.params.id
+  let prev: any
+  if (Types.ObjectId.isValid(id)) {
+    prev = await HospitalDoctor.findById(id).lean()
+  } else {
+    const candidates: any[] = [id]
+    const n = Number(id)
+    if (!Number.isNaN(n)) candidates.push(n)
+    prev = await HospitalDoctor.collection.findOne({ _id: { $in: candidates } })
+  }
   if (!prev) return res.status(404).json({ error: 'Doctor not found' })
 
   // Normalize username if provided and check for conflicts
@@ -135,7 +169,17 @@ export async function updateDoctor(req: Request, res: Response){
     }
   }
 
-  const d: any = await HospitalDoctor.findByIdAndUpdate(req.params.id, patch, { new: true })
+  let d: any
+  if (Types.ObjectId.isValid(id)) {
+    d = await HospitalDoctor.findByIdAndUpdate(id, patch, { new: true })
+  } else {
+    const candidates: any[] = [id]
+    const n = Number(id)
+    if (!Number.isNaN(n)) candidates.push(n)
+    const upd = await HospitalDoctor.collection.updateOne({ _id: { $in: candidates } }, { $set: patch })
+    if (!upd.matchedCount) return res.status(404).json({ error: 'Doctor not found' })
+    d = await HospitalDoctor.collection.findOne({ _id: { $in: candidates } })
+  }
   if (!d) return res.status(404).json({ error: 'Doctor not found' })
 
   // Sync corresponding Hospital User account

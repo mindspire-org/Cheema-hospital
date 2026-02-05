@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { labApi } from '../../utils/api'
+import { hospitalApi } from '../../utils/api'
+import Hospital_SalarySlipDialog from './hospital_SalarySlipDialog'
 
 type Attendance = { id?: string; staffId: string; date: string; shiftId?: string; status: 'present'|'absent'|'leave'; clockIn?: string; clockOut?: string; notes?: string }
 
@@ -19,13 +20,28 @@ function toMinutes(hm?: string){ if(!hm) return 0; const [h,m] = (hm||'').split(
 function fmtHours(min: number){ const h = Math.floor(min/60); const m = Math.round(min%60); return `${h}h ${m}m` }
 function formatPKR(n: number){ return `${Number(n).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 3 })} PKR` }
 
-export default function Lab_StaffReportDialog({ open, onClose, staffList, initialMonth, initialStaffId }: Props){
+export default function Hospital_StaffReportDialog({ open, onClose, staffList, initialMonth, initialStaffId }: Props){
   const [query, setQuery] = useState('')
   const [month, setMonth] = useState<string>(initialMonth || new Date().toISOString().slice(0,7))
   const [selectedId, setSelectedId] = useState<string>(initialStaffId || (staffList[0]?.id ?? ''))
   const [att, setAtt] = useState<Attendance[]>([])
   const [shifts, setShifts] = useState<Shift[]>([])
   const [settings, setSettings] = useState<any>(null)
+  const [earnings, setEarnings] = useState<any[]>([])
+  const [payments, setPayments] = useState<any[]>([])
+  const [payAmount, setPayAmount] = useState<number>(0)
+  const [payNote, setPayNote] = useState<string>('')
+  const [slipOpen, setSlipOpen] = useState(false)
+  const [slipExpense, setSlipExpense] = useState<any>(null)
+  const [slipPaidToDate, setSlipPaidToDate] = useState<number | undefined>(undefined)
+
+  const currentUser = useMemo(() => {
+    try {
+      const s = localStorage.getItem('hospital.session')
+      if (s) { const u = JSON.parse(s); return (u?.username || u?.name || '').toString() }
+    } catch {}
+    return 'admin'
+  }, [])
 
   const filtered = useMemo(()=> staffList.filter(s => s.name.toLowerCase().includes(query.toLowerCase())), [staffList, query])
   const selected = useMemo(()=> staffList.find(s => s.id === selectedId) ?? filtered[0] ?? null, [selectedId, staffList, filtered])
@@ -37,8 +53,8 @@ export default function Lab_StaffReportDialog({ open, onClose, staffList, initia
     ;(async()=>{
       try {
         const [shiftRes, settingsRes] = await Promise.all([
-          labApi.listShifts(),
-          labApi.getSettings().catch(()=>null),
+          hospitalApi.listShifts(),
+          hospitalApi.getSettings().catch(()=>null),
         ])
         if (!mounted) return
         setShifts((shiftRes.items||[]).map((x:any)=>({ id: x._id, name: x.name, start: x.start, end: x.end, absentCharges: x.absentCharges, lateDeduction: x.lateDeduction, earlyOutDeduction: x.earlyOutDeduction })))
@@ -51,17 +67,40 @@ export default function Lab_StaffReportDialog({ open, onClose, staffList, initia
   useEffect(()=>{ if (!open) return; if (initialStaffId && initialStaffId !== selectedId) setSelectedId(initialStaffId); if (initialMonth && initialMonth !== month) setMonth(initialMonth) }, [open, initialStaffId, initialMonth])
 
   useEffect(()=>{
-    if (!selected) { setAtt([]); return }
+    if (!selected) { setAtt([]); setEarnings([]); return }
     let mounted = true
     ;(async()=>{
       try {
         const from = `${month}-01`
         const dt = new Date(Number(month.slice(0,4)), Number(month.slice(5,7)), 0)
         const to = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`
-        const res = await labApi.listAttendance({ from, to, staffId: selected.id })
+        const [attH, earnH] = await Promise.all([
+          hospitalApi.listAttendance({ from, to, staffId: selected.id }),
+          hospitalApi.listStaffEarnings({ from, to, staffId: selected.id, limit: 1000 }),
+        ])
         if (!mounted) return
-        setAtt((res.items||[]).map((x:any)=>({ id: x._id, staffId: x.staffId, date: x.date, shiftId: x.shiftId, status: x.status, clockIn: x.clockIn, clockOut: x.clockOut, notes: x.notes })))
-      } catch { setAtt([]) }
+        setAtt((attH.items||[]).map((x:any)=>({ id: x._id, staffId: x.staffId, date: x.date, shiftId: x.shiftId, status: x.status, clockIn: x.clockIn, clockOut: x.clockOut, notes: x.notes })))
+        setEarnings((earnH.items||[]))
+      } catch { setAtt([]); setEarnings([]) }
+    })()
+    return ()=>{ mounted = false }
+  }, [selectedId, month, open])
+
+  // Load salary payments (expenses) for selected staff/month
+  useEffect(()=>{
+    if (!selected) { setPayments([]); return }
+    let mounted = true
+    ;(async()=>{
+      try {
+        const from = `${month}-01`
+        const dt = new Date(Number(month.slice(0,4)), Number(month.slice(5,7)), 0)
+        const to = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`
+        const res: any = await hospitalApi.listExpenses({ from, to })
+        const list: any[] = Array.isArray(res?.expenses) ? res.expenses : []
+        const sal = list.filter(x => String(x.category||'')==='Salaries' && String(x.note||x.description||'').includes(selected.name))
+        if (!mounted) return
+        setPayments(sal)
+      } catch { setPayments([]) }
     })()
     return ()=>{ mounted = false }
   }, [selectedId, month, open])
@@ -112,7 +151,49 @@ export default function Lab_StaffReportDialog({ open, onClose, staffList, initia
   const lateDeduction = stats.late * lateRate
   const earlyDeduction = stats.early * earlyRate
   const totalDeductions = absentDeduction + lateDeduction + earlyDeduction
-  const netSalary = Math.max(0, basicSalary - totalDeductions)
+  const additionalEarnings = useMemo(()=> (earnings||[]).reduce((s,n)=> s + Number(n?.amount||0), 0), [earnings])
+  const netSalary = Math.max(0, basicSalary - totalDeductions + additionalEarnings)
+
+  const paidSoFar = useMemo(()=> (payments||[]).reduce((s,n)=> s + Number(n?.amount||0), 0), [payments])
+  const remaining = Math.max(0, netSalary - paidSoFar)
+
+  const createSalaryExpense = async (amount: number, mode: 'full'|'half'|'custom', extraNote?: string) => {
+    if (!selected) return
+    if (!amount || amount <= 0) return
+    try {
+      const today = new Date().toISOString().slice(0,10)
+      const created: any = await hospitalApi.createExpense({
+        dateIso: today,
+        category: 'Salaries',
+        amount: Number(amount),
+        note: `Salary (${mode}) for ${selected.name} — ${month}${extraNote? ' — '+extraNote : ''}`,
+        method: 'cash',
+        ref: 'salary',
+        createdBy: currentUser,
+      } as any)
+      setPayments(p => [ ...(p||[]), created ])
+      setSlipExpense(created)
+      const newPaid = paidSoFar + Number(amount)
+      setSlipPaidToDate(newPaid)
+      setSlipOpen(true)
+      try { window.dispatchEvent(new Event('hospital:expenses:refresh')) } catch {}
+    } catch {}
+  }
+
+  const handlePay = async (mode: 'full'|'half') => {
+    const amt = mode === 'full' ? remaining : Math.max(0, Math.round(remaining / 2))
+    await createSalaryExpense(amt, mode)
+  }
+
+  const [customPayOpen, setCustomPayOpen] = useState(false)
+  const confirmCustomPay = async () => {
+    const amt = Number(payAmount || 0)
+    if (!amt || amt <= 0) return
+    const bounded = remaining ? Math.min(amt, remaining) : amt
+    setCustomPayOpen(false)
+    await createSalaryExpense(bounded, 'custom', payNote || undefined)
+    setPayNote('')
+  }
 
   const exportCsv = () => {
     const rows = [['Month','Staff','Date','Status','Clock In','Clock Out','Hours']]
@@ -125,94 +206,83 @@ export default function Lab_StaffReportDialog({ open, onClose, staffList, initia
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `lab_monthly_${month}_${selected?.name||''}.csv`; a.click(); URL.revokeObjectURL(a.href)
   }
 
-  const exportPdf = () => {
+  const exportPdf = async () => {
     const staffName = selected?.name || ''
-    const right = [
-      `<div><div style='font-size:12px;color:#475569'>Month</div><div style='font-size:14px;font-weight:600;'>${formatMonth(month)}</div></div>`,
-      `<div><div style='font-size:12px;color:#475569'>Staff</div><div style='font-size:14px;font-weight:600;'>${staffName}</div></div>`,
-    ].join('')
-    const head = `
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-        <div style="display:flex;align-items:center;gap:12px;">
-          ${settings?.logoDataUrl ? `<img src='${settings.logoDataUrl}' style='height:48px;object-fit:contain;'/>` : ''}
-          <div>
-            <div style="font-size:18px;font-weight:800;letter-spacing:.5px;">${(settings?.labName||'Lab').toUpperCase()}</div>
-            ${settings?.address ? `<div style='font-size:12px;color:#475569;'>${settings.address}</div>`:''}
-            ${(settings?.phone||settings?.email)? `<div style='font-size:12px;color:#475569;'>${settings?.phone? 'PHONE: '+settings.phone : ''} ${settings?.email? ' EMAIL: '+settings.email : ''}</div>`:''}
-          </div>
-        </div>
-        <div style="display:flex;gap:16px;">${right}</div>
-      </div>
-      <div style="font-size:16px;font-weight:600;margin:8px 0 12px;">Staff Report</div>
-    `
-
-    const card = (label:string, val:string) => `<div style='border-radius:8px;padding:10px;text-align:center;border:1px solid #e2e8f0;'>
-      <div style='font-size:18px;font-weight:700;'>${val}</div>
-      <div style='font-size:12px;color:#475569;'>${label}</div>
-    </div>`
-
-    const attCards = `
-      <div style='display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:8px 0;'>
-        ${card('Present', String(stats.presentDays))}
-        ${card('Absents', String(stats.absentDays))}
-        ${card('Late Arrivals', String(stats.late))}
-        ${card('Working Days', String(stats.workingDays))}
-      </div>
-    `
-
-    const salary = `
-      <div style='border:1px solid #e2e8f0;border-radius:8px;padding:10px;font-size:13px;'>
-        <div style='display:flex;justify-content:space-between;'><div>Basic Salary</div><div style='font-weight:600;'>${formatPKR(basicSalary)}</div></div>
-        <div style='margin-top:6px;color:#475569;'>Deductions:</div>
-        <div style='display:flex;justify-content:space-between;color:#b91c1c;'><div>Late Arrivals (${stats.late})</div><div>-${formatPKR(stats.late * (Number(staffShift?.lateDeduction||0)))}</div></div>
-        <div style='display:flex;justify-content:space-between;color:#b91c1c;'><div>Absents (${stats.absentDays})</div><div>-${formatPKR(stats.absentDays * (Number(staffShift?.absentCharges||0)))}</div></div>
-        <div style='display:flex;justify-content:space-between;color:#b91c1c;'><div>Early Out (${stats.early})</div><div>-${formatPKR(stats.early * (Number(staffShift?.earlyOutDeduction||0)))}</div></div>
-        <div style='display:flex;justify-content:space-between;margin-top:4px;font-weight:600;'><div>Total Deductions</div><div style='color:#b91c1c;'>-${formatPKR(totalDeductions)}</div></div>
-        <div style='display:flex;justify-content:space-between;margin-top:6px;font-weight:700;'><div>Net Salary</div><div style='color:#047857;'>${formatPKR(netSalary)}</div></div>
-      </div>
-    `
-
-    const tableRows = daily.map(r=> `
-      <tr>
-        <td style='padding:6px 8px;border:1px solid #e2e8f0;'>${r.date}</td>
-        <td style='padding:6px 8px;border:1px solid #e2e8f0;'>${shiftName(r.shift)}</td>
-        <td style='padding:6px 8px;border:1px solid #e2e8f0;'>${r.status}</td>
-        <td style='padding:6px 8px;border:1px solid #e2e8f0;'>${r.clockIn||'—'}</td>
-        <td style='padding:6px 8px;border:1px solid #e2e8f0;'>${r.clockOut||'—'}</td>
-        <td style='padding:6px 8px;border:1px solid #e2e8f0;'>${r.status==='present'? fmtHours(r.minutes) : '—'}</td>
-      </tr>`).join('')
-
-    const table = `
-      <table style='width:100%;border-collapse:collapse;font-size:12px;margin-top:10px;'>
-        <thead>
-          <tr>
-            ${['Date','Shift','Status','Clock In','Clock Out','Hours'].map(h=>`<th style='text-align:left;padding:6px 8px;border:1px solid #e2e8f0;background:#f8fafc;'>${h}</th>`).join('')}
-          </tr>
-        </thead>
-        <tbody>${tableRows || `<tr><td colspan='6' style='text-align:center;padding:10px;border:1px solid #e2e8f0;color:#64748b;'>No records</td></tr>`}</tbody>
-      </table>
-    `
-
-    const html = `<!doctype html><html><head><meta charset='utf-8'/><title>Staff Report</title></head>
-      <body style='font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;color:#0f172a;padding:16px;'>
-        ${head}
-        ${attCards}
-        ${salary}
-        ${table}
-      </body></html>`
-
-    const frame = document.createElement('iframe')
-    frame.style.position = 'fixed'
-    frame.style.right = '0'
-    frame.style.bottom = '0'
-    frame.style.width = '0'
-    frame.style.height = '0'
-    frame.style.border = '0'
-    document.body.appendChild(frame)
-    const doc = frame.contentWindow?.document || frame.contentDocument
-    if (!doc) return
-    doc.open(); doc.write(html); doc.close()
-    frame.onload = () => { try { frame.contentWindow?.focus(); frame.contentWindow?.print() } catch {} setTimeout(()=>{ document.body.removeChild(frame) }, 100) }
+    const loadJsPDF = () => new Promise<any>((resolve, reject) => {
+      const w: any = window as any
+      if (w.jspdf && w.jspdf.jsPDF) return resolve(w.jspdf)
+      const s = document.createElement('script')
+      s.src = 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js'
+      s.onload = () => resolve((window as any).jspdf)
+      s.onerror = reject
+      document.head.appendChild(s)
+    })
+    const jspdf = await loadJsPDF()
+    const { jsPDF } = jspdf
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+    const margin = 10
+    const pageW = doc.internal.pageSize.getWidth()
+    const pageH = doc.internal.pageSize.getHeight()
+    doc.setFont('courier', 'normal')
+    doc.setFontSize(14)
+    doc.text(String(settings?.name || 'Hospital'), margin, margin + 4)
+    doc.setFontSize(9)
+    let topY = margin + 10
+    const rightX = pageW - margin
+    doc.text(`Month: ${formatMonth(month)}`, rightX - 60, margin + 4)
+    doc.text(`Staff: ${staffName}`, rightX - 60, margin + 9)
+    doc.setLineWidth(0.2)
+    doc.line(margin, topY, pageW - margin, topY)
+    topY += 6
+    doc.setFontSize(12)
+    doc.text('Staff Report', margin, topY)
+    topY += 6
+    // Attendance cards
+    doc.setFontSize(9)
+    const cardW = 40, gap = 6
+    const cards = [
+      { label: 'Present', val: String(stats.presentDays) },
+      { label: 'Absents', val: String(stats.absentDays) },
+      { label: 'Late Arrivals', val: String(stats.late) },
+      { label: 'Working Days', val: String(stats.workingDays) },
+    ]
+    let x = margin
+    for (const c of cards){ doc.rect(x, topY, cardW, 16); doc.text(c.val, x+2, topY+6); doc.text(c.label, x+2, topY+12); x += cardW + gap }
+    topY += 22
+    // Salary summary
+    const lines: Array<[string,string]> = []
+    lines.push(['Basic Salary', `${Number(basicSalary).toLocaleString()} PKR`])
+    lines.push([`Late Arrivals (${stats.late})`, `- ${Number(lateDeduction).toLocaleString()} PKR`])
+    lines.push([`Absents (${stats.absentDays})`, `- ${Number(absentDeduction).toLocaleString()} PKR`])
+    lines.push([`Early Out (${stats.early})`, `- ${Number(earlyDeduction).toLocaleString()} PKR`])
+    lines.push(['Total Deductions', `- ${Number(totalDeductions).toLocaleString()} PKR`])
+    lines.push(['Additional Earnings', `+ ${Number(additionalEarnings).toLocaleString()} PKR`])
+    lines.push(['Net Salary', `${Number(netSalary).toLocaleString()} PKR`])
+    let y = topY
+    const colX = pageW/2
+    doc.setFontSize(10); doc.text('Salary Summary', margin, y); y += 4; doc.setFontSize(9)
+    for (const [k,v] of lines){ doc.text(k, margin+2, y); doc.text(v, colX-2, y, { align: 'right' as any }); y += 5 }
+    topY = y + 4
+    // Table
+    const cols = [
+      { title: 'Date', width: 26 },
+      { title: 'Shift', width: 34 },
+      { title: 'Status', width: 26 },
+      { title: 'Clock In', width: 26 },
+      { title: 'Clock Out', width: 26 },
+      { title: 'Hours', width: 26 },
+    ] as const
+    const drawHeader = (y0: number) => { doc.setFontSize(10); doc.text('Daily Attendance', margin, y0); y0+=4; doc.setFontSize(9); let xx = margin; for (const c of cols){ doc.text(c.title, xx+1, y0); xx += c.width } y0+=2; doc.setLineWidth(0.2); doc.line(margin, y0, pageW-margin, y0); return y0+4 }
+    y = drawHeader(topY)
+    doc.setFontSize(8)
+    for (const r of daily){
+      const data = [r.date, shiftName(r.shift), r.status, r.clockIn||'', r.clockOut||'', (r.status==='present'? fmtHours(r.minutes) : '—')]
+      let xx = margin
+      for (let i=0;i<cols.length;i++){ doc.text(String(data[i]||''), xx+1, y+3); xx += cols[i].width }
+      y += 5
+      if (y > pageH - margin - 10){ doc.addPage(); y = drawHeader(margin) }
+    }
+    doc.save(`hospital-staff-report-${staffName}-${month}.pdf`)
   }
 
   if (!open) return null
@@ -269,6 +339,13 @@ export default function Lab_StaffReportDialog({ open, onClose, staffList, initia
                     <div className="flex items-center justify-between text-rose-700"><div>Early Out ({stats.early})</div><div>-{formatPKR(earlyDeduction)}</div></div>
                     <div className="mt-1 flex items-center justify-between font-medium"><div>Total Deductions</div><div className="text-rose-600">-{formatPKR(totalDeductions)}</div></div>
                     <div className="mt-3 flex items-center justify-between font-semibold"><div>Net Salary</div><div className="text-emerald-600">{formatPKR(netSalary)}</div></div>
+                    <div className="mt-1 flex items-center justify-between"><div>Paid This Month</div><div className="text-emerald-700">+{formatPKR(paidSoFar)}</div></div>
+                    <div className="mt-1 flex items-center justify-between font-medium"><div>Remaining</div><div className="text-slate-800">{formatPKR(remaining)}</div></div>
+                    <div className="mt-3 flex items-center gap-2">
+                      <button disabled={remaining<=0} onClick={()=>handlePay('full')} className="btn">Pay Full</button>
+                      <button disabled={remaining<=0} onClick={()=>handlePay('half')} className="btn-outline-navy">Pay Half</button>
+                      <button disabled={netSalary<=0} onClick={()=>{ setPayAmount(Math.max(0, remaining || netSalary)); setCustomPayOpen(true) }} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm">Pay Custom</button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -308,6 +385,29 @@ export default function Lab_StaffReportDialog({ open, onClose, staffList, initia
           )}
         </div>
       </div>
+      {customPayOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4">
+          <div className="w-full max-w-sm rounded-lg bg-white p-4 shadow-xl">
+            <div className="mb-3 text-base font-semibold text-slate-800">Pay Salary (Custom)</div>
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-sm text-slate-700">Amount</label>
+                <input type="number" value={payAmount} onChange={e=>setPayAmount(parseFloat(e.target.value||'0'))} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Amount" />
+                <div className="mt-1 text-xs text-slate-500">Remaining: {formatPKR(remaining)}</div>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm text-slate-700">Note (optional)</label>
+                <input value={payNote} onChange={e=>setPayNote(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Note" />
+              </div>
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button onClick={()=>setCustomPayOpen(false)} className="btn-outline-navy">Cancel</button>
+                <button disabled={!payAmount || payAmount<=0} onClick={confirmCustomPay} className="btn">Pay</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      <Hospital_SalarySlipDialog open={slipOpen} onClose={()=>setSlipOpen(false)} expense={slipExpense} staffName={selected?.name} month={month} basicSalary={basicSalary} netSalary={netSalary} paidToDate={slipPaidToDate} />
     </div>
   )
 }

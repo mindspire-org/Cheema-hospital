@@ -6,6 +6,7 @@ const baseURL = rawBase
 function getToken(path?: string){
   try {
     if (path) {
+      if (path.startsWith('/reception')) return localStorage.getItem('reception.token') || localStorage.getItem('token') || ''
       if (path.startsWith('/hospital')) return localStorage.getItem('hospital.token') || localStorage.getItem('token') || ''
       if (path.startsWith('/diagnostic')) return localStorage.getItem('diagnostic.token') || localStorage.getItem('token') || ''
       if (path.startsWith('/lab')) return localStorage.getItem('lab.token') || localStorage.getItem('aesthetic.token') || localStorage.getItem('token') || ''
@@ -124,7 +125,7 @@ export const diagnosticApi = {
 
   // Settings
   getSettings: () => api('/diagnostic/settings'),
-  updateSettings: (data: { diagnosticName?: string; phone?: string; address?: string; email?: string; reportFooter?: string; logoDataUrl?: string; department?: string; consultantName?: string; consultantDegrees?: string; consultantTitle?: string; consultants?: Array<{ name?: string; degrees?: string; title?: string }> }) =>
+  updateSettings: (data: { diagnosticName?: string; phone?: string; address?: string; email?: string; reportFooter?: string; logoDataUrl?: string; department?: string; consultantName?: string; consultantDegrees?: string; consultantTitle?: string; consultants?: Array<{ name?: string; degrees?: string; title?: string }>; templateMappings?: Array<{ testId: string; testName?: string; templateKey: string }> }) =>
     api('/diagnostic/settings', { method: 'PUT', body: JSON.stringify(data) }),
 
   // Results
@@ -172,6 +173,46 @@ export const diagnosticApi = {
   createUser: (data: any)=> api('/diagnostic/users', { method: 'POST', body: JSON.stringify(data) }),
   updateUser: (id: string, data: any)=> api(`/diagnostic/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteUser: (id: string)=> api(`/diagnostic/users/${id}`, { method: 'DELETE' }),
+
+  // Sidebar Roles & Permissions (Diagnostic)
+  listSidebarRoles: () => api('/diagnostic/sidebar-roles'),
+  createSidebarRole: (role: string, permissions?: Array<{ path: string; label: string; visible?: boolean; order?: number }>) =>
+    api('/diagnostic/sidebar-roles', { method: 'POST', body: JSON.stringify({ role, permissions }) }),
+  deleteSidebarRole: (role: string) => api(`/diagnostic/sidebar-roles/${encodeURIComponent(role)}`, { method: 'DELETE' }),
+  listSidebarPermissions: (role?: string) => role
+    ? api(`/diagnostic/sidebar-permissions?role=${encodeURIComponent(role)}`)
+    : api('/diagnostic/sidebar-permissions'),
+  updateSidebarPermissions: (role: string, data: { permissions: Array<{ path: string; label: string; visible: boolean; order: number }> }) =>
+    api(`/diagnostic/sidebar-permissions/${encodeURIComponent(role)}`, { method: 'PUT', body: JSON.stringify(data) }),
+  resetSidebarPermissions: (role: string) =>
+    api(`/diagnostic/sidebar-permissions/${encodeURIComponent(role)}/reset`, { method: 'POST' }),
+}
+
+export const receptionApi = {
+  // Auth
+  login: (username: string, password: string) => api('/reception/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
+  logout: () => api('/reception/logout', { method: 'POST' }),
+
+  // Users
+  listUsers: () => api('/reception/users'),
+  createUser: (data: { username: string; role: string; password: string }) =>
+    api('/reception/users', { method: 'POST', body: JSON.stringify(data) }),
+  updateUser: (id: string, data: { username?: string; role?: string; password?: string }) =>
+    api(`/reception/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteUser: (id: string) => api(`/reception/users/${id}`, { method: 'DELETE' }),
+
+  // Sidebar Roles & Permissions
+  listSidebarRoles: () => api('/reception/sidebar-roles'),
+  createSidebarRole: (role: string, permissions?: Array<{ path: string; label: string; visible?: boolean; order?: number }>) =>
+    api('/reception/sidebar-roles', { method: 'POST', body: JSON.stringify({ role, permissions }) }),
+  deleteSidebarRole: (role: string) => api(`/reception/sidebar-roles/${encodeURIComponent(role)}`, { method: 'DELETE' }),
+  listSidebarPermissions: (role?: string) => role
+    ? api(`/reception/sidebar-permissions?role=${encodeURIComponent(role)}`)
+    : api('/reception/sidebar-permissions'),
+  updateSidebarPermissions: (role: string, data: { permissions: Array<{ path: string; label: string; visible: boolean; order: number }> }) =>
+    api(`/reception/sidebar-permissions/${encodeURIComponent(role)}`, { method: 'PUT', body: JSON.stringify(data) }),
+  resetSidebarPermissions: (role: string) =>
+    api(`/reception/sidebar-permissions/${encodeURIComponent(role)}/reset`, { method: 'POST' }),
 }
 
 export const corporateApi = {
@@ -303,6 +344,13 @@ export async function api(path: string, init?: RequestInit){
     const data = await res.json()
     // Auto-persist Hospital JWT on login, and clear on logout
     try {
+      if (path.startsWith('/reception') && /\/login$/.test(path) && (data as any)?.token) {
+        localStorage.setItem('reception.token', (data as any).token)
+        localStorage.setItem('token', (data as any).token)
+      }
+      if (path.startsWith('/reception') && /\/logout$/.test(path)) {
+        localStorage.removeItem('reception.token')
+      }
       if (path.startsWith('/hospital') && /\/users\/login$/.test(path) && (data as any)?.token) {
         localStorage.setItem('hospital.token', (data as any).token)
         localStorage.setItem('token', (data as any).token)
@@ -364,6 +412,25 @@ export const pharmacyApi = {
   recordSupplierPayment: (id: string, data: { amount: number; purchaseId?: string; method?: string; note?: string; date?: string })=> api(`/pharmacy/suppliers/${id}/payment`, { method: 'POST', body: JSON.stringify(data) }),
   listSupplierPurchases: (id: string)=> api(`/pharmacy/suppliers/${id}/purchases`),
 
+  // Companies
+  listCompanies: (params?: { q?: string; distributorId?: string; page?: number; limit?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.q) qs.set('q', params.q)
+    if (params?.distributorId) qs.set('distributorId', params.distributorId)
+    if (params?.page != null) qs.set('page', String(params.page))
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    const s = qs.toString()
+    return api(`/pharmacy/companies${s?`?${s}`:''}`)
+  },
+  createCompany: (data: { name: string; distributorId?: string; distributorName?: string; status?: 'Active'|'Inactive' }) =>
+    api('/pharmacy/companies', { method: 'POST', body: JSON.stringify(data) }),
+  updateCompany: (id: string, data: Partial<{ name: string; distributorId?: string; distributorName?: string; status?: 'Active'|'Inactive' }>) =>
+    api(`/pharmacy/companies/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteCompany: (id: string) => api(`/pharmacy/companies/${id}`, { method: 'DELETE' }),
+  listSupplierCompanies: (supplierId: string) => api(`/pharmacy/suppliers/${supplierId}/companies`),
+  assignSupplierCompanies: (supplierId: string, data: { companyIds?: string[]; unassignIds?: string[] }) =>
+    api(`/pharmacy/suppliers/${supplierId}/companies`, { method: 'POST', body: JSON.stringify(data) }),
+
   // Customers
   listCustomers: (params?: { q?: string; page?: number; limit?: number }) => {
     const qs = new URLSearchParams()
@@ -378,13 +445,14 @@ export const pharmacyApi = {
   deleteCustomer: (id: string)=> api(`/pharmacy/customers/${id}`, { method: 'DELETE' }),
 
   // Expenses
-  listExpenses: (params?: { from?: string; to?: string; minAmount?: number; search?: string; type?: string; page?: number; limit?: number; }) => {
+  listExpenses: (params?: { from?: string; to?: string; minAmount?: number; search?: string; type?: string; user?: string; page?: number; limit?: number; }) => {
     const qs = new URLSearchParams()
     if (params?.from) qs.set('from', params.from)
     if (params?.to) qs.set('to', params.to)
     if (params?.minAmount!=null) qs.set('minAmount', String(params.minAmount))
     if (params?.search) qs.set('search', params.search)
     if (params?.type) qs.set('type', params.type)
+    if (params?.user) qs.set('user', params.user)
     if (params?.page != null) qs.set('page', String(params.page))
     if (params?.limit != null) qs.set('limit', String(params.limit))
     const s = qs.toString()
@@ -502,14 +570,32 @@ export const pharmacyApi = {
   },
   upsertAttendance: (data: any)=> api('/pharmacy/attendance', { method: 'POST', body: JSON.stringify(data) }),
 
+  // Staff Earnings
+  listStaffEarnings: (params?: { staffId?: string; from?: string; to?: string; page?: number; limit?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.staffId) qs.set('staffId', params.staffId)
+    if (params?.from) qs.set('from', params.from)
+    if (params?.to) qs.set('to', params.to)
+    if (params?.page != null) qs.set('page', String(params.page))
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    const s = qs.toString()
+    return api(`/pharmacy/staff-earnings${s?`?${s}`:''}`)
+  },
+  createStaffEarning: (data: { staffId: string; date: string; category: 'Bonus'|'Award'|'LumpSum'|'RevenueShare'; amount?: number; rate?: number; base?: number; notes?: string }) =>
+    api('/pharmacy/staff-earnings', { method: 'POST', body: JSON.stringify(data) }),
+  updateStaffEarning: (id: string, data: Partial<{ staffId: string; date: string; category: 'Bonus'|'Award'|'LumpSum'|'RevenueShare'; amount?: number; rate?: number; base?: number; notes?: string }>) =>
+    api(`/pharmacy/staff-earnings/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteStaffEarning: (id: string) => api(`/pharmacy/staff-earnings/${id}`, { method: 'DELETE' }),
+
   // Sales / POS
-  listSales: (params?: { bill?: string; customer?: string; customerId?: string; payment?: 'Any'|'Cash'|'Card'|'Credit'; medicine?: string; from?: string; to?: string; page?: number; limit?: number }) => {
+  listSales: (params?: { bill?: string; customer?: string; customerId?: string; payment?: 'Any'|'Cash'|'Card'|'Credit'; medicine?: string; user?: string; from?: string; to?: string; page?: number; limit?: number }) => {
     const qs = new URLSearchParams()
     if (params?.bill) qs.set('bill', params.bill)
     if (params?.customer) qs.set('customer', params.customer)
     if (params?.customerId) qs.set('customerId', params.customerId)
     if (params?.payment) qs.set('payment', params.payment)
     if (params?.medicine) qs.set('medicine', params.medicine)
+    if (params?.user) qs.set('user', params.user)
     if (params?.from) qs.set('from', params.from)
     if (params?.to) qs.set('to', params.to)
     if (params?.page != null) qs.set('page', String(params.page))
@@ -738,6 +824,57 @@ export const aestheticApi = {
   login: (username: string, password: string) => api('/aesthetic/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
   logout: () => api('/aesthetic/logout', { method: 'POST' }),
 
+  // Staff
+  listStaff: (params?: { shiftId?: string; page?: number; limit?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.shiftId) qs.set('shiftId', params.shiftId)
+    if (params?.page != null) qs.set('page', String(params.page))
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    const s = qs.toString()
+    return api(`/aesthetic/staff${s?`?${s}`:''}`)
+  },
+  createStaff: (data: any) => api('/aesthetic/staff', { method: 'POST', body: JSON.stringify(data) }),
+  updateStaff: (id: string, data: any) => api(`/aesthetic/staff/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteStaff: (id: string) => api(`/aesthetic/staff/${id}`, { method: 'DELETE' }),
+
+  // Shifts
+  listShifts: () => api('/aesthetic/shifts'),
+  createShift: (data: any) => api('/aesthetic/shifts', { method: 'POST', body: JSON.stringify(data) }),
+  updateShift: (id: string, data: any) => api(`/aesthetic/shifts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteShift: (id: string) => api(`/aesthetic/shifts/${id}`, { method: 'DELETE' }),
+
+  // Attendance
+  listAttendance: (params?: { date?: string; from?: string; to?: string; shiftId?: string; staffId?: string; page?: number; limit?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.date) qs.set('date', params.date)
+    if (params?.from) qs.set('from', params.from)
+    if (params?.to) qs.set('to', params.to)
+    if (params?.shiftId) qs.set('shiftId', params.shiftId)
+    if (params?.staffId) qs.set('staffId', params.staffId)
+    if (params?.page != null) qs.set('page', String(params.page))
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    const s = qs.toString()
+    return api(`/aesthetic/attendance${s?`?${s}`:''}`)
+  },
+  upsertAttendance: (data: any) => api('/aesthetic/attendance', { method: 'POST', body: JSON.stringify(data) }),
+
+  // Staff Earnings
+  listStaffEarnings: (params?: { staffId?: string; from?: string; to?: string; page?: number; limit?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.staffId) qs.set('staffId', params.staffId)
+    if (params?.from) qs.set('from', params.from)
+    if (params?.to) qs.set('to', params.to)
+    if (params?.page != null) qs.set('page', String(params.page))
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    const s = qs.toString()
+    return api(`/aesthetic/staff-earnings${s?`?${s}`:''}`)
+  },
+  createStaffEarning: (data: { staffId: string; date: string; category: 'Bonus'|'Award'|'LumpSum'|'RevenueShare'; amount?: number; rate?: number; base?: number; notes?: string }) =>
+    api('/aesthetic/staff-earnings', { method: 'POST', body: JSON.stringify(data) }),
+  updateStaffEarning: (id: string, data: Partial<{ staffId: string; date: string; category: 'Bonus'|'Award'|'LumpSum'|'RevenueShare'; amount?: number; rate?: number; base?: number; notes?: string }>) =>
+    api(`/aesthetic/staff-earnings/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteStaffEarning: (id: string) => api(`/aesthetic/staff-earnings/${id}`, { method: 'DELETE' }),
+
   // Suppliers
   listSuppliers: (params?: string | { q?: string; page?: number; limit?: number }) => {
     if (typeof params === 'string') {
@@ -835,6 +972,19 @@ export const aestheticApi = {
   createUser: (data: any)=> api('/aesthetic/users', { method: 'POST', body: JSON.stringify(data) }),
   updateUser: (id: string, data: any)=> api(`/aesthetic/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteUser: (id: string)=> api(`/aesthetic/users/${id}`, { method: 'DELETE' }),
+
+  // Sidebar Roles & Permissions (Aesthetic)
+  listSidebarRoles: () => api('/aesthetic/sidebar-roles'),
+  createSidebarRole: (role: string, permissions?: Array<{ path: string; label: string; visible?: boolean; order?: number }>) =>
+    api('/aesthetic/sidebar-roles', { method: 'POST', body: JSON.stringify({ role, permissions }) }),
+  deleteSidebarRole: (role: string) => api(`/aesthetic/sidebar-roles/${encodeURIComponent(role)}`, { method: 'DELETE' }),
+  listSidebarPermissions: (role?: string) => role
+    ? api(`/aesthetic/sidebar-permissions?role=${encodeURIComponent(role)}`)
+    : api('/aesthetic/sidebar-permissions'),
+  updateSidebarPermissions: (role: string, data: { permissions: Array<{ path: string; label: string; visible: boolean; order: number }> }) =>
+    api(`/aesthetic/sidebar-permissions/${encodeURIComponent(role)}`, { method: 'PUT', body: JSON.stringify(data) }),
+  resetSidebarPermissions: (role: string) =>
+    api(`/aesthetic/sidebar-permissions/${encodeURIComponent(role)}/reset`, { method: 'POST' }),
 
   // Purchase Drafts (Pending Review)
   listPurchaseDrafts: (params?: { from?: string; to?: string; search?: string; limit?: number }) => {
@@ -1154,6 +1304,23 @@ export const labApi = {
     return api(`/lab/attendance${s?`?${s}`:''}`)
   },
   upsertAttendance: (data: any)=> api('/lab/attendance', { method: 'POST', body: JSON.stringify(data) }),
+
+  // Staff Earnings
+  listStaffEarnings: (params?: { staffId?: string; from?: string; to?: string; page?: number; limit?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.staffId) qs.set('staffId', params.staffId)
+    if (params?.from) qs.set('from', params.from)
+    if (params?.to) qs.set('to', params.to)
+    if (params?.page != null) qs.set('page', String(params.page))
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    const s = qs.toString()
+    return api(`/lab/staff-earnings${s?`?${s}`:''}`)
+  },
+  createStaffEarning: (data: { staffId: string; date: string; category: 'Bonus'|'Award'|'LumpSum'|'RevenueShare'; amount?: number; rate?: number; base?: number; notes?: string }) =>
+    api('/lab/staff-earnings', { method: 'POST', body: JSON.stringify(data) }),
+  updateStaffEarning: (id: string, data: Partial<{ staffId: string; date: string; category: 'Bonus'|'Award'|'LumpSum'|'RevenueShare'; amount?: number; rate?: number; base?: number; notes?: string }>) =>
+    api(`/lab/staff-earnings/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteStaffEarning: (id: string) => api(`/lab/staff-earnings/${id}`, { method: 'DELETE' }),
 
   // Expenses
   listExpenses: (params?: { from?: string; to?: string; minAmount?: number; search?: string; type?: string; page?: number; limit?: number; }) => {
@@ -1525,10 +1692,19 @@ export const hospitalApi = {
   updateDepartment: (id: string, data: { name: string; description?: string; opdBaseFee: number; opdFollowupFee?: number; followupWindowDays?: number; doctorPrices?: Array<{ doctorId: string; price: number }> }) =>
     api(`/hospital/departments/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 
-  listDoctors: () => api('/hospital/doctors'),
-  createDoctor: (data: { name: string; departmentIds?: string[]; primaryDepartmentId?: string; opdBaseFee?: number; opdFollowupFee?: number; followupWindowDays?: number; username?: string; password?: string; phone?: string; specialization?: string; qualification?: string; cnic?: string; shares?: number; active?: boolean }) =>
+  listDoctors: (params?: { q?: string; departmentId?: string; active?: boolean; page?: number; limit?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.q) qs.set('q', params.q)
+    if (params?.departmentId) qs.set('departmentId', params.departmentId)
+    if (params?.active != null) qs.set('active', String(params.active))
+    if (params?.page != null) qs.set('page', String(params.page))
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    const s = qs.toString()
+    return api(`/hospital/doctors${s?`?${s}`:''}`)
+  },
+  createDoctor: (data: { name: string; departmentIds?: string[]; primaryDepartmentId?: string; opdBaseFee?: number; opdFollowupFee?: number; followupWindowDays?: number; username?: string; password?: string; phone?: string; specialization?: string; qualification?: string; cnic?: string; pmdcNo?: string; shares?: number; active?: boolean }) =>
     api('/hospital/doctors', { method: 'POST', body: JSON.stringify(data) }),
-  updateDoctor: (id: string, data: { name: string; departmentIds?: string[]; primaryDepartmentId?: string; opdBaseFee?: number; opdFollowupFee?: number; followupWindowDays?: number; username?: string; password?: string; phone?: string; specialization?: string; qualification?: string; cnic?: string; shares?: number; active?: boolean }) =>
+  updateDoctor: (id: string, data: { name: string; departmentIds?: string[]; primaryDepartmentId?: string; opdBaseFee?: number; opdFollowupFee?: number; followupWindowDays?: number; username?: string; password?: string; phone?: string; specialization?: string; qualification?: string; cnic?: string; pmdcNo?: string; shares?: number; active?: boolean }) =>
     api(`/hospital/doctors/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteDoctor: (id: string) => api(`/hospital/doctors/${id}`, { method: 'DELETE' }),
 
@@ -1605,12 +1781,14 @@ export const hospitalApi = {
     api(`/hospital/tokens/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 
   // Appointments (Hospital)
-  listAppointments: (params?: { date?: string; doctorId?: string; scheduleId?: string; status?: 'booked'|'confirmed'|'checked-in'|'cancelled'|'no-show' }) => {
+  listAppointments: (params?: { date?: string; doctorId?: string; scheduleId?: string; status?: 'booked'|'confirmed'|'checked-in'|'cancelled'|'no-show'; page?: number; limit?: number }) => {
     const qs = new URLSearchParams()
     if (params?.date) qs.set('date', params.date)
     if (params?.doctorId) qs.set('doctorId', params.doctorId)
     if (params?.scheduleId) qs.set('scheduleId', params.scheduleId)
     if (params?.status) qs.set('status', params.status)
+    if (params?.page != null) qs.set('page', String(params.page))
+    if (params?.limit != null) qs.set('limit', String(params.limit))
     const s = qs.toString()
     return api(`/hospital/appointments${s?`?${s}`:''}`)
   },
@@ -1626,6 +1804,9 @@ export const hospitalApi = {
   // Staff
   listStaff: () => api('/hospital/staff'),
   listShifts: () => api('/hospital/shifts'),
+  createShift: (data: any) => api('/hospital/shifts', { method: 'POST', body: JSON.stringify(data) }),
+  updateShift: (id: string, data: any) => api(`/hospital/shifts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteShift: (id: string) => api(`/hospital/shifts/${id}`, { method: 'DELETE' }),
   listAttendance: (params?: { date?: string; from?: string; to?: string; shiftId?: string; staffId?: string; page?: number; limit?: number }) => {
     const qs = new URLSearchParams()
     if (params?.date) qs.set('date', params.date)
@@ -1638,9 +1819,27 @@ export const hospitalApi = {
     const s = qs.toString()
     return api(`/hospital/attendance${s?`?${s}`:''}`)
   },
+  upsertAttendance: (data: any) => api('/hospital/attendance', { method: 'POST', body: JSON.stringify(data) }),
   createStaff: (data: any) => api('/hospital/staff', { method: 'POST', body: JSON.stringify(data) }),
   updateStaff: (id: string, data: any) => api(`/hospital/staff/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteStaff: (id: string) => api(`/hospital/staff/${id}`, { method: 'DELETE' }),
+
+  // Staff Earnings
+  listStaffEarnings: (params?: { staffId?: string; from?: string; to?: string; page?: number; limit?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.staffId) qs.set('staffId', params.staffId)
+    if (params?.from) qs.set('from', params.from)
+    if (params?.to) qs.set('to', params.to)
+    if (params?.page != null) qs.set('page', String(params.page))
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    const s = qs.toString()
+    return api(`/hospital/staff-earnings${s?`?${s}`:''}`)
+  },
+  createStaffEarning: (data: { staffId: string; date: string; category: 'Bonus'|'Award'|'LumpSum'|'RevenueShare'; amount?: number; rate?: number; base?: number; notes?: string }) =>
+    api('/hospital/staff-earnings', { method: 'POST', body: JSON.stringify(data) }),
+  updateStaffEarning: (id: string, data: Partial<{ staffId: string; date: string; category: 'Bonus'|'Award'|'LumpSum'|'RevenueShare'; amount?: number; rate?: number; base?: number; notes?: string }>) =>
+    api(`/hospital/staff-earnings/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteStaffEarning: (id: string) => api(`/hospital/staff-earnings/${id}`, { method: 'DELETE' }),
 
   // Expenses
   listExpenses: (params?: { from?: string; to?: string }) => {
@@ -2162,8 +2361,38 @@ export const financeApi = {
     return api(`/hospital/finance/cash-sessions${s?`?${s}`:''}`)
   },
 
+  // Manager Cash Count (Hospital)
+  listCashCounts: (params?: { from?: string; to?: string; search?: string; page?: number; limit?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.from) qs.set('from', params.from)
+    if (params?.to) qs.set('to', params.to)
+    if (params?.search) qs.set('search', params.search)
+    if (params?.page != null) qs.set('page', String(params.page))
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    const s = qs.toString()
+    return api(`/hospital/finance/cash-counts${s?`?${s}`:''}`)
+  },
+  createCashCount: (data: { date: string; amount: number; receiver?: string; handoverBy?: string; note?: string }) =>
+    api('/hospital/finance/cash-counts', { method: 'POST', body: JSON.stringify(data) }),
+  deleteCashCount: (id: string) => api(`/hospital/finance/cash-counts/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  cashCountSummary: (params?: { from?: string; to?: string; search?: string }) => {
+    const qs = new URLSearchParams()
+    if (params?.from) qs.set('from', params.from)
+    if (params?.to) qs.set('to', params.to)
+    if (params?.search) qs.set('search', params.search)
+    const s = qs.toString()
+    return api(`/hospital/finance/cash-counts/summary${s?`?${s}`:''}`)
+  },
+
   // Vendors
-  vendors: () => api('/hospital/finance/vendors'),
+  vendors: (params?: { q?: string; page?: number; limit?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.q) qs.set('q', params.q)
+    if (params?.page != null) qs.set('page', String(params.page))
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    const s = qs.toString()
+    return api(`/hospital/finance/vendors${s?`?${s}`:''}`)
+  },
   createVendor: (data: { name: string; phone?: string; address?: string }) => api('/hospital/finance/vendors', { method: 'POST', body: JSON.stringify(data) }),
   updateVendor: (id: string, data: { name?: string; phone?: string; address?: string }) => api(`/hospital/finance/vendors/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteVendor: (id: string) => api(`/hospital/finance/vendors/${encodeURIComponent(id)}`, { method: 'DELETE' }),
@@ -2211,10 +2440,47 @@ export const financeApi = {
     return api(`/hospital/finance/combined-cash-bank${s?`?${s}`:''}`)
   },
 
-  // Business day
-  dayStatus: () => api('/hospital/finance/day/status'),
-  openDay: (dateIso?: string, note?: string) => api('/hospital/finance/day/open', { method: 'POST', body: JSON.stringify({ dateIso, note }) }),
-  closeDay: (dateIso?: string, note?: string) => api('/hospital/finance/day/close', { method: 'POST', body: JSON.stringify({ dateIso, note }) }),
+  // Finance Module: Users
+  listUsers: () => api('/hospital/finance/users'),
+  createUser: (data: { username: string; role: string; password: string }) =>
+    api('/hospital/finance/users', { method: 'POST', body: JSON.stringify(data) }),
+  updateUser: (id: string, data: { username?: string; role?: string; password?: string }) =>
+    api(`/hospital/finance/users/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteUser: (id: string) =>
+    api(`/hospital/finance/users/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  // Finance Module: Auth
+  login: (username: string, password: string) =>
+    api('/hospital/finance/users/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
+  logout: () =>
+    api('/hospital/finance/users/logout', { method: 'POST' }),
+
+  // Finance Module: Sidebar Roles & Permissions
+  listSidebarRoles: () => api('/hospital/finance/sidebar-roles'),
+  createSidebarRole: (role: string, permissions?: Array<{ path: string; label: string; visible?: boolean; order?: number }>) =>
+    api('/hospital/finance/sidebar-roles', { method: 'POST', body: JSON.stringify({ role, permissions }) }),
+  deleteSidebarRole: (role: string) => api(`/hospital/finance/sidebar-roles/${encodeURIComponent(role)}`, { method: 'DELETE' }),
+  listSidebarPermissions: (role?: string) => role
+    ? api(`/hospital/finance/sidebar-permissions?role=${encodeURIComponent(role)}`)
+    : api('/hospital/finance/sidebar-permissions'),
+  updateSidebarPermissions: (role: string, data: { permissions: Array<{ path: string; label: string; visible: boolean; order: number }> }) =>
+    api(`/hospital/finance/sidebar-permissions/${encodeURIComponent(role)}`, { method: 'PUT', body: JSON.stringify(data) }),
+  resetSidebarPermissions: (role: string) =>
+    api(`/hospital/finance/sidebar-permissions/${encodeURIComponent(role)}/reset`, { method: 'POST' }),
+
+  // Finance: Audit Logs
+  listAuditLogs: (params?: { search?: string; action?: string; from?: string; to?: string; page?: number; limit?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.search) qs.set('search', params.search)
+    if (params?.action) qs.set('action', params.action)
+    if (params?.from) qs.set('from', params.from)
+    if (params?.to) qs.set('to', params.to)
+    if (params?.page != null) qs.set('page', String(params.page))
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    const s = qs.toString()
+    return api(`/hospital/finance/audit-logs${s?`?${s}`:''}`)
+  },
+  createAuditLog: (data: { actor?: string; action: string; label?: string; method?: string; path?: string; at: string; detail?: string }) =>
+    api('/hospital/finance/audit-logs', { method: 'POST', body: JSON.stringify(data) }),
 }
 
 export const aestheticFinanceApi = {

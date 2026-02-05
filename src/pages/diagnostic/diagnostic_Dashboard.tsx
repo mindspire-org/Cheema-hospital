@@ -13,12 +13,11 @@ export default function Diagnostic_Dashboard(){
   const [weeklyTotals, setWeeklyTotals] = useState<number[]>([])
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
-  // Shift-wise cash
-  const [shiftDate, setShiftDate] = useState('')
+  // Global filters
   const [shifts, setShifts] = useState<Array<{ id: string; name: string; start: string; end: string }>>([])
-  const [shiftId, setShiftId] = useState('')
-  const [shiftLoading, setShiftLoading] = useState(false)
-  const [shiftCash, setShiftCash] = useState<{ revenue: number; net: number }>({ revenue: 0, net: 0 })
+  const [filterShiftId, setFilterShiftId] = useState('')
+  const [fromTime, setFromTime] = useState('')
+  const [toTime, setToTime] = useState('')
 
   const todayStr = useMemo(()=>{
     const d = new Date(); const y=d.getFullYear(); const m=String(d.getMonth()+1).padStart(2,'0'); const day=String(d.getDate()).padStart(2,'0');
@@ -29,21 +28,48 @@ export default function Diagnostic_Dashboard(){
   const effTo = to || todayStr
   const isFiltered = !!(from || to)
 
-  // Compute date 8 weeks back for weekly sales chart
-  const from8w = useMemo(()=>{
-    const d = new Date(); d.setDate(d.getDate() - (7*7))
-    const y=d.getFullYear(); const m=String(d.getMonth()+1).padStart(2,'0'); const day=String(d.getDate()).padStart(2,'0')
-    return `${y}-${m}-${day}`
-  }, [])
+  function getShiftWindow(dateStr: string, sh?: { start: string; end: string }){
+    try{
+      if (!sh) return null
+      const [y,m,d] = (dateStr||'').split('-').map(n=>parseInt(n||'0',10))
+      const [shh,smm] = String(sh.start||'00:00').split(':').map(n=>parseInt(n||'0',10))
+      const [ehh,emm] = String(sh.end||'00:00').split(':').map(n=>parseInt(n||'0',10))
+      const start = new Date(y, (m-1), d, shh||0, smm||0, 0)
+      let end = new Date(y, (m-1), d, ehh||0, emm||0, 0)
+      if (end <= start) end = new Date(end.getTime() + 24*60*60*1000)
+      return { start, end }
+    } catch { return null }
+  }
+
+  // Effective window: time overrides; if single-day + shift, use shift window
+  const effectiveWindow = useMemo(()=>{
+    try{
+      if (fromTime && toTime){
+        return { from: `${effFrom}T${fromTime}:00`, to: `${effTo}T${toTime}:59` }
+      }
+      if (filterShiftId && effFrom===effTo){
+        const sh = shifts.find(s=>s.id===filterShiftId)
+        const win = getShiftWindow(effFrom, sh)
+        if (win){
+          const f = new Date(win.start.getTime() - (win.start.getTimezoneOffset()*60000)).toISOString().slice(0,19)
+          const t = new Date(win.end.getTime() - (win.end.getTimezoneOffset()*60000)).toISOString().slice(0,19)
+          return { from: f, to: t }
+        }
+      }
+    } catch {}
+    return { from: effFrom, to: effTo }
+  }, [effFrom, effTo, fromTime, toTime, filterShiftId, shifts])
+
+  
 
   useEffect(()=>{
     let mounted = true
     ;(async()=>{
       try {
         const [rangeOrders, testsPage, weeklyOrders] = await Promise.all([
-          diagnosticApi.listOrders({ from: effFrom, to: effTo, page: 1, limit: 500 }) as any,
+          diagnosticApi.listOrders({ from: effectiveWindow.from, to: effectiveWindow.to, page: 1, limit: 500 }) as any,
           diagnosticApi.listTests({ page: 1, limit: 1 }) as any,
-          diagnosticApi.listOrders({ from: from8w, to: todayStr, page: 1, limit: 1000 }) as any,
+          diagnosticApi.listOrders({ from: effectiveWindow.from, to: effectiveWindow.to, page: 1, limit: 1000 }) as any,
         ])
         if (!mounted) return
         setTokensToday(Number(rangeOrders?.total || (rangeOrders?.items||[]).length || 0))
@@ -69,21 +95,24 @@ export default function Diagnostic_Dashboard(){
         const sorted = [...weeklyArr].sort((a:any,b:any)=> new Date(b?.createdAt||0).getTime() - new Date(a?.createdAt||0).getTime())
         setRecentSales(sorted.slice(0,5))
 
-        // Weekly Sales aggregation (last 8 weeks)
+        // Weekly Sales aggregation (within selected window)
         const makeWeekStart = (d: Date)=>{
           const dd = new Date(d); const day = dd.getDay(); // 0=Sun
           dd.setDate(dd.getDate() - day) // week starts Sunday
           dd.setHours(0,0,0,0)
           return dd
         }
-        const end = new Date()
+        const startSel = new Date(effectiveWindow.from)
+        const endSel = new Date(effectiveWindow.to)
         const buckets: { label: string; start: Date; total: number }[] = []
-        for (let i=7;i>=0;i--){
-          const cur = new Date(end); cur.setDate(cur.getDate() - (i*7))
-          const start = makeWeekStart(cur)
+        // Build buckets from start to end stepping weekly
+        let cur = makeWeekStart(startSel)
+        while (cur <= endSel){
+          const start = new Date(cur)
           const month = start.toLocaleString(undefined, { month: 'short' })
           const label = `Wk ${month} ${String(start.getDate()).padStart(2,'0')}`
           buckets.push({ label, start, total: 0 })
+          cur = new Date(start); cur.setDate(cur.getDate() + 7)
         }
         for (const o of weeklyArr){
           const dt = o?.createdAt ? new Date(o.createdAt) : null
@@ -105,7 +134,7 @@ export default function Diagnostic_Dashboard(){
       }
     })()
     return ()=>{ mounted = false }
-  }, [effFrom, effTo, from8w, todayStr])
+  }, [effectiveWindow.from, effectiveWindow.to, todayStr])
 
   // Load shifts once (use Lab shifts as canonical for diagnostics)
   useEffect(()=>{
@@ -116,42 +145,13 @@ export default function Diagnostic_Dashboard(){
         if (!mounted) return
         const arr = (r?.items || r || []).map((x:any)=> ({ id: String(x._id||x.id), name: x.name, start: x.start, end: x.end }))
         setShifts(arr)
-        if (!shiftId && arr.length) setShiftId(arr[0].id)
       } catch { setShifts([]) }
-      // default shiftDate to today on mount
-      setShiftDate(todayStr)
+      // no shift-wise section; shifts used for global filter
     })()
     return ()=>{ mounted = false }
   }, [todayStr])
 
-  function getShiftWindow(dateStr: string, sh?: { start: string; end: string }){
-    try{
-      if (!sh) return null
-      const [y,m,d] = (dateStr||'').split('-').map(n=>parseInt(n||'0',10))
-      const [shh,smm] = String(sh.start||'00:00').split(':').map(n=>parseInt(n||'0',10))
-      const [ehh,emm] = String(sh.end||'00:00').split(':').map(n=>parseInt(n||'0',10))
-      const start = new Date(y, (m-1), d, shh||0, smm||0, 0)
-      let end = new Date(y, (m-1), d, ehh||0, emm||0, 0)
-      if (end <= start) end = new Date(end.getTime() + 24*60*60*1000)
-      return { start, end }
-    } catch { return null }
-  }
-
-  async function computeShiftCash(){
-    const sh = shifts.find(s=> s.id===shiftId)
-    const win = getShiftWindow(shiftDate, sh)
-    if (!win) return
-    setShiftLoading(true)
-    try{
-      const orders:any = await diagnosticApi.listOrders({ from: shiftDate, to: shiftDate, page: 1, limit: 1000 })
-      const items: any[] = (orders?.items || [])
-      const ts = (s?: any)=>{ const str = String(s||''); const iso = str.includes('T')? str : `${str}T00:00:00`; const t = new Date(iso).getTime(); return isFinite(t)? t:0 }
-      const inRange = (t:number)=> t>=win.start.getTime() && t<win.end.getTime()
-      const revenue = items.filter(o=> inRange(ts(o.createdAt||o.date))).reduce((s,o)=> s + Number(o.net||0), 0)
-      setShiftCash({ revenue, net: revenue })
-    } catch { setShiftCash({ revenue: 0, net: 0 }) }
-    finally { setShiftLoading(false) }
-  }
+  
 
   // Last 7 days revenue (fixed window)
   const cards = [
@@ -167,7 +167,7 @@ export default function Diagnostic_Dashboard(){
     <div className="space-y-4">
       <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-200">Diagnostic Dashboard</h2>
 
-      {/* Filters */}
+      {/* Filters (global) */}
       <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <div className="flex items-center gap-2">
@@ -178,7 +178,22 @@ export default function Diagnostic_Dashboard(){
             <label className="text-slate-600 dark:text-slate-300">To</label>
             <input type="date" value={to} onChange={e=> setTo(e.target.value)} className="rounded-md border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" />
           </div>
-          <button onClick={()=>{ setFrom(''); setTo('') }} className="ml-auto rounded-md border border-slate-300 px-3 py-1 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">Reset</button>
+          <div className="flex items-center gap-2">
+            <label className="text-slate-600 dark:text-slate-300">From Time</label>
+            <input type="time" value={fromTime} onChange={e=> setFromTime(e.target.value)} className="rounded-md border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-slate-600 dark:text-slate-300">To Time</label>
+            <input type="time" value={toTime} onChange={e=> setToTime(e.target.value)} className="rounded-md border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-slate-600 dark:text-slate-300">Shift</label>
+            <select value={filterShiftId} onChange={e=> setFilterShiftId(e.target.value)} className="rounded-md border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 min-w-[160px]">
+              <option value="">All Shifts</option>
+              {shifts.map(s=> <option key={s.id} value={s.id}>{s.name} ({s.start}-{s.end})</option>)}
+            </select>
+          </div>
+          <button onClick={()=>{ setFrom(''); setTo(''); setFromTime(''); setToTime(''); setFilterShiftId('') }} className="ml-auto rounded-md border border-slate-300 px-3 py-1 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">Reset</button>
         </div>
       </div>
 
@@ -199,27 +214,7 @@ export default function Diagnostic_Dashboard(){
         ))}
       </div>
 
-      {/* Shift-wise Cash */}
-      <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
-        <div className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-300">Shift-wise Cash</div>
-        <div className="flex flex-wrap items-end gap-3 text-sm">
-          <label className="text-slate-700 dark:text-slate-300">
-            <div className="mb-1">Date</div>
-            <input type="date" value={shiftDate} onChange={e=> setShiftDate(e.target.value)} className="rounded-md border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" />
-          </label>
-          <label className="text-slate-700 dark:text-slate-300">
-            <div className="mb-1">Shift</div>
-            <select value={shiftId} onChange={e=> setShiftId(e.target.value)} className="rounded-md border border-slate-300 px-2 py-1 min-w-[160px] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
-              {shifts.map(s=> <option key={s.id} value={s.id}>{s.name} ({s.start}-{s.end})</option>)}
-            </select>
-          </label>
-          <button onClick={computeShiftCash} disabled={!shiftId || shiftLoading} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 disabled:opacity-50">{shiftLoading? 'Calculating…' : 'Calculate'}</button>
-        </div>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 text-sm">
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/50"><div className="text-slate-600 dark:text-slate-300">Revenue (Orders)</div><div className="mt-1 font-semibold text-slate-900 dark:text-slate-100">Rs {Number(shiftCash.revenue||0).toFixed(2)}</div></div>
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/50"><div className="text-slate-600 dark:text-slate-300">Net Cash</div><div className="mt-1 font-semibold text-slate-900 dark:text-slate-100">Rs {Number(shiftCash.net||0).toFixed(2)}</div></div>
-        </div>
-      </div>
+      {/* Shift-wise Cash removed; global filters above apply to all widgets */}
 
       <div className="grid gap-3 md:grid-cols-3">
         <div className="rounded-xl border border-slate-200 bg-white p-4 md:col-span-2 dark:border-slate-700 dark:bg-slate-900">

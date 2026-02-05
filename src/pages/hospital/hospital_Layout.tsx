@@ -25,15 +25,15 @@ export default function Hospital_Layout() {
     } catch (_) {}
   }, [sidebarCollapsed])
 
-  const shell = theme === 'dark' ? 'min-h-dvh bg-slate-900 text-slate-100' : 'min-h-dvh bg-slate-50 text-slate-900'
+  const shell = theme === 'dark' ? 'h-dvh bg-slate-900 text-slate-100' : 'h-dvh bg-slate-50 text-slate-900'
   return (
     <div className={theme === 'dark' ? 'hospital-scope dark' : 'hospital-scope'}>
       <div className={shell}>
-        <div className="flex">
+        <div className="flex h-dvh overflow-hidden">
           <Hospital_Sidebar collapsed={sidebarCollapsed} />
-          <div className="flex min-h-dvh flex-1 flex-col">
+          <div className="flex h-dvh flex-1 flex-col overflow-hidden">
             <Hospital_Header onToggleSidebar={() => setSidebarCollapsed(v => !v)} collapsed={sidebarCollapsed} onToggleTheme={() => setTheme(t=>t==='dark'?'light':'dark')} theme={theme} />
-            <main className="w-full flex-1 px-4 py-6 sm:px-6">
+            <main className="w-full flex-1 overflow-y-auto px-4 py-6 sm:px-6">
               <Outlet />
             </main>
           </div>

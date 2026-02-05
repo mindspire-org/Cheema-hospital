@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { diagnosticApi } from '../../utils/api'
+import { DiagnosticFormRegistry } from '../../components/diagnostic/registry'
 
 export default function Diagnostic_Settings(){
   const [notice, setNotice] = useState('')
@@ -15,6 +16,8 @@ export default function Diagnostic_Settings(){
   const [consultantDegrees, setConsultantDegrees] = useState('')
   const [consultantTitle, setConsultantTitle] = useState('')
   const [consultants, setConsultants] = useState<Array<{ name?: string; degrees?: string; title?: string }>>([])
+  const [templateMappings, setTemplateMappings] = useState<Array<{ testId: string; testName?: string; templateKey: string }>>([])
+  const [tests, setTests] = useState<Array<{ id: string; name: string }>>([])
   const [saving, setSaving] = useState(false)
 
   useEffect(()=>{
@@ -34,10 +37,20 @@ export default function Diagnostic_Settings(){
         setConsultantDegrees(s.consultantDegrees || '')
         setConsultantTitle(s.consultantTitle || '')
         setConsultants(Array.isArray(s.consultants) ? s.consultants : [])
+        setTemplateMappings(Array.isArray(s.templateMappings) ? s.templateMappings : [])
       } catch {}
     })()
     return ()=>{ mounted = false }
   }, [])
+
+  // Load tests for mapping dropdowns
+  useEffect(()=>{ (async()=>{
+    try {
+      const tr = await diagnosticApi.listTests({ limit: 1000 }) as any
+      const items = (tr?.items||tr||[]).map((t:any)=>({ id: String(t._id||t.id), name: String(t.name||'') }))
+      setTests(items)
+    } catch { setTests([]) }
+  })() }, [])
 
   // System tab removed per request
 
@@ -60,6 +73,13 @@ export default function Diagnostic_Settings(){
           degrees: (c.degrees||'').trim() || undefined,
           title: (c.title||'').trim() || undefined,
         })).filter(c => c.name || c.degrees || c.title),
+        templateMappings: (templateMappings||[])
+          .map(m => ({
+            testId: (m.testId||'').trim(),
+            testName: tests.find(t=> t.id===m.testId)?.name || m.testName || undefined,
+            templateKey: (m.templateKey||'').trim(),
+          }))
+          .filter(m => m.testId && m.templateKey),
       }
       await diagnosticApi.updateSettings(payload)
       setNotice('Diagnostic settings saved')
@@ -177,6 +197,54 @@ export default function Diagnostic_Settings(){
 
             <div className="flex items-center justify-end">
               <button onClick={saveDiagnostic} disabled={saving} className="btn disabled:opacity-50">{saving? 'Saving...' : 'Save Settings'}</button>
+            </div>
+          </div>
+        </div>
+
+        {/* Report Template Mappings */}
+        <div className="rounded-xl border border-slate-200 bg-white">
+          <div className="border-b border-slate-200 px-4 py-3 font-medium text-slate-800">Report Template Mappings</div>
+          <div className="space-y-4 p-4">
+            <div className="text-sm text-slate-600">Select which report template should be used for each diagnostic test.</div>
+            <div className="space-y-2">
+              {(templateMappings||[]).map((m, idx)=>{
+                const selectedTest = m.testId
+                return (
+                  <div key={idx} className="grid gap-2 md:grid-cols-3">
+                    <div>
+                      <label className="mb-1 block text-xs text-slate-600">Test</label>
+                      <select value={selectedTest} onChange={e=> setTemplateMappings(prev=>{
+                        const arr = prev.slice(); arr[idx] = { ...arr[idx], testId: e.target.value }; return arr
+                      })} className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm">
+                        <option value="">Select Test…</option>
+                        {tests.map(t=> (
+                          <option key={t.id} value={t.id}>{t.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs text-slate-600">Template</label>
+                      <select value={m.templateKey||''} onChange={e=> setTemplateMappings(prev=>{
+                        const arr = prev.slice(); arr[idx] = { ...arr[idx], templateKey: e.target.value }; return arr
+                      })} className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm">
+                        <option value="">Select Template…</option>
+                        {Object.keys(DiagnosticFormRegistry).map(k=> (
+                          <option key={k} value={k}>{k}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex items-end">
+                      <button onClick={()=> setTemplateMappings(prev=> prev.filter((_,i)=> i!==idx))} className="rounded-md border border-slate-300 px-3 py-2 text-sm text-rose-700 hover:bg-rose-50">Remove</button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            <div>
+              <button onClick={()=> setTemplateMappings(prev=> [...(prev||[]), { testId: '', templateKey: '' }])} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50">+ Add Mapping</button>
+            </div>
+            <div className="flex items-center justify-end">
+              <button onClick={saveDiagnostic} disabled={saving} className="btn disabled:opacity-50">{saving? 'Saving…' : 'Save Mappings'}</button>
             </div>
           </div>
         </div>

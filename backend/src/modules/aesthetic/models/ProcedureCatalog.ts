@@ -13,6 +13,9 @@ const ProcedureCatalogSchema = new Schema({
   createdAtIso: { type: String, default: () => new Date().toISOString() },
 }, { timestamps: true, collection: 'aesthetic_procedure_catalog' })
 
+ProcedureCatalogSchema.index({ createdAt: -1 })
+ProcedureCatalogSchema.index({ name: 'text' })
+
 export type ProcedureCatalogDoc = {
   _id: string
   name: string

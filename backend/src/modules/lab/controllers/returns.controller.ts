@@ -42,6 +42,7 @@ export async function create(req: Request, res: Response){
     let order: any = await LabOrder.findOne({ tokenNo: data.reference })
     if (!order && mongoose.isValidObjectId(data.reference)) order = await LabOrder.findById(data.reference)
     if (!order) throw new ApiError(404, 'Order not found for reference')
+    const wasReturned = String(order.status) === 'returned'
 
     // Resolve test names for return lines (qty 1 each)
     const testIds: string[] = Array.isArray(order.tests) ? order.tests.map((t:any)=>String(t)) : []
@@ -66,6 +67,22 @@ export async function create(req: Request, res: Response){
     }
 
     await order.save()
+    // Inventory: on whole-order returned transition, restore consumables once
+    try {
+      if (String(order.status) === 'returned' && !wasReturned){
+        const cons: any[] = Array.isArray((order as any)?.consumables) ? (order as any).consumables : []
+        await Promise.all(cons.map(async (c: any) => {
+          const key = String(c.item || '').trim().toLowerCase()
+          const qty = Math.max(0, Number(c.qty || 0))
+          if (!key || qty <= 0) return
+          const it = await LabInventoryItem.findOne({ key })
+          if (!it) return
+          const cur = Math.max(0, Number((it as any).onHand || 0))
+          ;(it as any).onHand = cur + qty
+          await it.save()
+        }))
+      }
+    } catch {}
 
     // Create return record
     const items = computedReturnLines.reduce((s: number, l: { qty: number }) => s + (Number(l.qty) || 0), 0)
@@ -219,6 +236,7 @@ export async function undo(req: Request, res: Response){
   let order: any = await LabOrder.findOne({ tokenNo: body.reference })
   if (!order && mongoose.isValidObjectId(body.reference)) order = await LabOrder.findById(body.reference)
   if (!order) throw new ApiError(404, 'Order not found for reference')
+  const wasReturned = String(order.status) === 'returned'
   // Resolve target test id
   let tid = String((body as any).testId || '').trim()
   let tname = String((body as any).testName || '').trim()
@@ -246,6 +264,23 @@ export async function undo(req: Request, res: Response){
     order.status = 'received'
   }
   await order.save()
+
+  // Inventory: if transitioning from returned -> received, re-deduct previously restored consumables
+  try {
+    if (wasReturned && String(order.status) !== 'returned'){
+      const cons: any[] = Array.isArray((order as any)?.consumables) ? (order as any).consumables : []
+      await Promise.all(cons.map(async (c: any) => {
+        const key = String(c.item || '').trim().toLowerCase()
+        const qty = Math.max(0, Number(c.qty || 0))
+        if (!key || qty <= 0) return
+        const it = await LabInventoryItem.findOne({ key })
+        if (!it) return
+        const cur = Math.max(0, Number((it as any).onHand || 0))
+        ;(it as any).onHand = Math.max(0, cur - qty)
+        await it.save()
+      }))
+    }
+  } catch {}
 
   // Remove matching line from the latest customer return doc for this token
   try {

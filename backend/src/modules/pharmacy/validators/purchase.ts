@@ -18,6 +18,8 @@ export const purchaseCreateSchema = z.object({
   invoice: z.string().min(1),
   supplierId: z.string().optional(),
   supplierName: z.string().optional(),
+  companyId: z.string().optional(),
+  companyName: z.string().optional(),
   lines: z.array(purchaseLineSchema).min(1),
 })
 

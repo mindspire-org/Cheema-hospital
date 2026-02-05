@@ -1,30 +1,79 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { LogOut, Ticket, ListChecks, Calculator } from 'lucide-react'
-import { hospitalApi } from '../../utils/api'
+import { useEffect, useState } from 'react'
+import { LogOut, Ticket, ListChecks, Calculator, Settings as Cog, UserCog } from 'lucide-react'
+import { receptionApi } from '../../utils/api'
 
 type Item = { to: string; label: string; icon: any; end?: boolean }
+
+const nav: Item[] = [
+  { to: '/reception/token-generator', label: 'Token Generator', icon: Ticket },
+  { to: "/reception/today-tokens", label: "Today's Tokens", icon: ListChecks },
+  { to: '/reception/ipd-billing', label: 'IPD Billing', icon: Ticket },
+  { to: '/reception/ipd-transactions', label: 'Recent IPD Payments', icon: ListChecks },
+  { to: '/reception/diagnostic/token-generator', label: 'Diagnostic Token Generator', icon: Ticket },
+  { to: '/reception/diagnostic/sample-tracking', label: 'Diagnostic Sample Tracking', icon: ListChecks },
+  { to: '/reception/lab/sample-intake', label: 'Lab Sample Intake', icon: Ticket },
+  { to: '/reception/lab/sample-tracking', label: 'Lab Sample Tracking', icon: ListChecks },
+  { to: '/reception/lab/manager-cash-count', label: ' Manager Cash Count', icon: Calculator },
+  { to: '/reception/sidebar-permissions', label: 'Sidebar Permissions', icon: Cog },
+  { to: '/reception/user-management', label: 'User Management', icon: UserCog },
+]
+
+export const receptionSidebarNav = nav
 
 export default function Reception_Sidebar({ collapsed = false }: { collapsed?: boolean }){
   const navigate = useNavigate()
   const width = collapsed ? 'md:w-16' : 'md:w-64'
-  const items: Item[] = [
-    { to: '/reception/token-generator', label: 'Token Generator', icon: Ticket },
-    { to: "/reception/today-tokens", label: "Today's Tokens", icon: ListChecks },
-    { to: '/reception/ipd-billing', label: 'IPD Billing', icon: Ticket },
-    { to: '/reception/ipd-transactions', label: 'Recent IPD Payments', icon: ListChecks },
-    { to: '/reception/diagnostic/token-generator', label: 'Diagnostic Token Generator', icon: Ticket },
-    { to: '/reception/diagnostic/sample-tracking', label: 'Diagnostic Sample Tracking', icon: ListChecks },
-    { to: '/reception/lab/sample-intake', label: 'Lab Sample Intake', icon: Ticket },
-    { to: '/reception/lab/sample-tracking', label: 'Lab Sample Tracking', icon: ListChecks },
-    { to: '/reception/lab/manager-cash-count', label: ' Manager Cash Count', icon: Calculator },
-  ]
-  async function logout(){
+  const [role, setRole] = useState<string>('receptionist')
+  const [username, setUsername] = useState<string>('')
+  const [items, setItems] = useState<Item[]>(nav)
+
+  useEffect(() => {
     try {
-      const raw = localStorage.getItem('reception.session')
-      const u = raw ? JSON.parse(raw) : null
-      await hospitalApi.logoutHospitalUser(u?.username||'reception')
+      const raw = localStorage.getItem('reception.user') || localStorage.getItem('reception.session')
+      if (raw) {
+        const u = JSON.parse(raw)
+        if (u?.role) setRole(String(u.role).toLowerCase())
+        if (u?.username) setUsername(String(u.username))
+      }
     } catch {}
-    try { localStorage.removeItem('reception.session') } catch {}
+  }, [])
+
+  useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      try {
+        const res: any = await (receptionApi as any).listSidebarPermissions?.(role)
+        const doc = Array.isArray(res) ? res[0] : res
+        const map = new Map<string, any>()
+        const perms = (doc?.permissions || []) as Array<{ path: string; visible?: boolean; order?: number }>
+        for (const p of perms) map.set(p.path, p)
+        const isAdmin = String(role || '').toLowerCase() === 'admin'
+        const computed = nav
+          .filter(item => {
+            if (item.to === '/reception/sidebar-permissions' && !isAdmin) return false
+            const perm = map.get(item.to)
+            return perm ? perm.visible !== false : true
+          })
+          .sort((a, b) => {
+            const oa = map.get(a.to)?.order ?? Number.MAX_SAFE_INTEGER
+            const ob = map.get(b.to)?.order ?? Number.MAX_SAFE_INTEGER
+            if (oa !== ob) return oa - ob
+            const ia = nav.findIndex(n => n.to === a.to)
+            const ib = nav.findIndex(n => n.to === b.to)
+            return ia - ib
+          })
+        if (mounted) setItems(computed)
+      } catch {
+        if (mounted) setItems(nav)
+      }
+    })()
+    return () => { mounted = false }
+  }, [role])
+
+  async function logout(){
+    try { await receptionApi.logout() } catch {}
+    try { localStorage.removeItem('reception.token'); localStorage.removeItem('token'); localStorage.removeItem('reception.user'); localStorage.removeItem('reception.session') } catch {}
     navigate('/reception/login')
   }
   return (
@@ -34,7 +83,7 @@ export default function Reception_Sidebar({ collapsed = false }: { collapsed?: b
     >
       <div className="h-16 px-4 flex items-center border-b" style={{ borderColor: 'rgba(255,255,255,0.12)' }}>
         {!collapsed && <div className="font-semibold">Reception</div>}
-        <div className={`ml-auto text-xs opacity-80 ${collapsed?'hidden':''}`}>front desk</div>
+        <div className={`ml-auto text-xs opacity-80 ${collapsed?'hidden':''}`}>{username || 'front desk'}</div>
       </div>
       <nav className="flex-1 overflow-y-auto p-3 space-y-1">
         {items.map((it)=>{

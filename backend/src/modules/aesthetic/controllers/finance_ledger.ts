@@ -5,6 +5,31 @@ function todayIso(){
   return new Date().toISOString().slice(0,10)
 }
 
+export async function postOpdTokenJournal(args: { tokenId: string; dateIso: string; fee: number; doctorId?: string; patientName?: string; mrn?: string; tokenNo?: string; paidMethod?: 'Cash'|'Bank'|'AR' }){
+  // Idempotent: if an OPD journal exists after latest reversal, reuse
+  const lastOpd: any = await AestheticFinanceJournal.findOne({ refType: 'opd_token', refId: args.tokenId }).sort({ createdAt: -1 }).lean()
+  const lastRev: any = await AestheticFinanceJournal.findOne({ refType: 'opd_token_reversal', refId: args.tokenId }).sort({ createdAt: -1 }).lean()
+  if (lastOpd && (!lastRev || new Date(lastOpd.createdAt) > new Date(lastRev.createdAt))) return lastOpd as any
+  const doc: any = args.doctorId ? await AestheticDoctor.findById(args.doctorId).lean() : null
+  const percent = (doc as any)?.shares ?? 100
+  const share = round2((args.fee || 0) * (Math.max(Number(percent)||0,0) / 100))
+  const debitAccount = args.paidMethod === 'Bank' ? 'BANK' : (args.paidMethod === 'Cash' ? 'CASH' : 'AR')
+  const tagsBase: any = { }
+  if (args.doctorId) tagsBase.doctorId = String(args.doctorId)
+  if (args.tokenId) tagsBase.tokenId = String(args.tokenId)
+  if (args.patientName) tagsBase.patientName = args.patientName
+  if (args.mrn) tagsBase.mrn = args.mrn
+
+  const lines: JournalLine[] = [
+    { account: debitAccount, debit: args.fee, tags: { ...tagsBase } },
+    { account: 'OPD_REVENUE', credit: args.fee, tags: { ...tagsBase } },
+    { account: 'DOCTOR_SHARE_EXPENSE', debit: share, tags: { ...tagsBase } },
+    { account: 'DOCTOR_PAYABLE', credit: share, tags: { ...tagsBase } },
+  ]
+  const memo = `OPD Token ${args.tokenNo ? ('#'+args.tokenNo) : ''}`.trim()
+  return await AestheticFinanceJournal.create({ dateIso: args.dateIso || todayIso(), refType: 'opd_token', refId: args.tokenId, memo, lines })
+}
+
 function round2(n: number){
   return Math.round((n + Number.EPSILON) * 100) / 100
 }

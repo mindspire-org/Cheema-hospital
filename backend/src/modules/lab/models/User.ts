@@ -2,7 +2,7 @@ import { Schema, model, models } from 'mongoose'
 
 const UserSchema = new Schema({
   username: { type: String, required: true, unique: true },
-  role: { type: String, default: 'technician' },
+  role: { type: String, default: 'admin' },
   passwordHash: { type: String, required: true },
 }, { timestamps: true })
 

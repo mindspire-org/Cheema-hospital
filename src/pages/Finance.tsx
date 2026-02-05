@@ -7,6 +7,7 @@ export default function Finance() {
     try {
       const sess = localStorage.getItem('finance.session')
       if (!sess) navigate('/finance/login', { replace: true })
+      else navigate('/finance/pharmacy-reports', { replace: true })
     } catch {
       navigate('/finance/login', { replace: true })
     }

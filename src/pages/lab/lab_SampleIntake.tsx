@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Plus, X, Search, ChevronDown } from 'lucide-react'
+import { X, Search, ChevronDown } from 'lucide-react'
 import { labApi, hospitalApi, corporateApi } from '../../utils/api'
 import { printLabTokenSlip } from '../../utils/printLabToken'
 
 type LabTest = { id: string; name: string; price: number }
-
-type Consumable = { item: string; qty: number }
 
 // local-only types for UI
 
@@ -14,7 +12,7 @@ function formatPKR(n: number) {
   try { return n.toLocaleString('en-PK', { style: 'currency', currency: 'PKR' }) } catch { return `PKR ${n.toFixed(2)}` }
 }
 
-type InvItem = { key: string; name: string; onHand?: number; unitsPerPack?: number }
+ 
 
 export default function Lab_Orders() {
   const navigate = useNavigate()
@@ -48,31 +46,11 @@ export default function Lab_Orders() {
   const [query, setQuery] = useState('')
   const [openList, setOpenList] = useState(false)
   const [selectedTestIds, setSelectedTestIds] = useState<string[]>([])
+ 
 
-  const [consumableItem, setConsumableItem] = useState('')
-  const [consumableQty, setConsumableQty] = useState('1')
-  const [consumables, setConsumables] = useState<Consumable[]>([])
-  const [inventory, setInventory] = useState<InvItem[]>([])
-  const [invQuery, setInvQuery] = useState('')
-  const [invOpen, setInvOpen] = useState(false)
+  
 
-  const filteredInventory = useMemo(() => {
-    const term = invQuery.trim().toLowerCase()
-    return inventory.filter(it => !term || it.name.toLowerCase().includes(term) || it.key.includes(term)).slice(0, 30)
-  }, [invQuery, inventory])
-
-  useEffect(()=>{
-    let mounted = true
-    ;(async()=>{
-      try {
-        const r = await labApi.listInventory({ limit: 500 })
-        if (!mounted) return
-        const items = (r.items||[]).map((x:any)=>({ key: String(x.key||x.name||'').toLowerCase(), name: x.name, onHand: Number(x.onHand||0), unitsPerPack: Number(x.unitsPerPack||1) }))
-        setInventory(items)
-      } catch(e){ console.error(e); setInventory([]) }
-    })()
-    return ()=>{ mounted = false }
-  }, [])
+  
 
   const [discount, setDiscount] = useState('0')
   // Corporate billing fields
@@ -261,22 +239,7 @@ export default function Lab_Orders() {
   }
   const removeTest = (id: string) => setSelectedTestIds(prev => prev.filter(x => x !== id))
 
-  const addConsumable = () => {
-    const key = consumableItem.trim() || ''
-    const qty = Math.max(1, Number(consumableQty) || 1)
-    if (!key) return
-    const inv = inventory.find(i=>i.key===key)
-    if (!inv) return
-    const available = Math.max(0, Number(inv.onHand||0))
-    const alreadyPicked = consumables.filter(c=>c.item===key).reduce((s,c)=> s + Number(c.qty||0), 0)
-    const remaining = available - alreadyPicked
-    if (remaining < qty){ alert(`Only ${remaining} remaining in stock for ${inv.name}`); return }
-    setConsumables(prev => [...prev, { item: inv.key, qty }])
-    setConsumableItem('')
-    setInvQuery('')
-    setConsumableQty('1')
-  }
-  const removeConsumable = (i: number) => setConsumables(prev => prev.filter((_, idx) => idx !== i))
+  
 
   useEffect(()=>{
     const st = (location?.state || {}) as any
@@ -372,7 +335,6 @@ export default function Lab_Orders() {
         patientId: String(patient._id),
         patient: patientSnap,
         tests: [firstId],
-        consumables,
         subtotal: getPrice(firstId),
         discount: discountNum,
         net: Math.max(0, getPrice(firstId) - discountNum),
@@ -421,14 +383,13 @@ export default function Lab_Orders() {
         }
       } catch {}
 
-      // Remaining tests — reuse token, no consumables, no discount
+      // Remaining tests — reuse token, no discount
       const remain = selectedTestIds.slice(1)
       for (const tid of remain){
         const payload: any = {
           patientId: String(patient._id),
           patient: patientSnap,
           tests: [tid],
-          consumables: [],
           subtotal: getPrice(tid),
           discount: 0,
           net: getPrice(tid),
@@ -761,54 +722,7 @@ export default function Lab_Orders() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <div className="text-base font-semibold text-slate-800">Select Consumables</div>
-        <div className="text-xs text-slate-500">Choose items and quantities to use</div>
-        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-          <div className="relative">
-            <div className="flex items-center gap-2 rounded-md border border-slate-300 px-2 py-2">
-              <Search className="h-4 w-4 text-slate-400" />
-              <input
-                value={invQuery}
-                onChange={e=>{ setInvQuery(e.target.value); setInvOpen(true); setConsumableItem('') }}
-                onFocus={()=>setInvOpen(true)}
-                placeholder="Search consumable..."
-                className="min-w-[160px] flex-1 outline-none"
-              />
-            </div>
-            {invOpen && filteredInventory.length > 0 && (
-              <div className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded-md border border-slate-200 bg-white shadow-sm">
-                {filteredInventory.map(it => (
-                  <button
-                    type="button"
-                    key={it.key}
-                    onClick={()=>{ setConsumableItem(it.key); setInvQuery(it.name); setInvOpen(false) }}
-                    className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-slate-50"
-                  >
-                    <div className="text-sm text-slate-800">{it.name}</div>
-                    <div className="text-xs text-slate-600">On hand: {it.onHand ?? 0}</div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <input value={consumableQty} onChange={e=>setConsumableQty(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="Quantity" />
-          <button disabled={!consumableItem} onClick={addConsumable} className="inline-flex items-center justify-center gap-2 rounded-md bg-violet-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-40 hover:bg-violet-800"><Plus className="h-4 w-4" /> Add</button>
-        </div>
-        {consumables.length > 0 && (
-          <div className="mt-3 grid gap-2">
-            {consumables.map((c, i) => (
-              <div key={i} className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2 text-sm">
-                <div>{inventory.find(it=>it.key===c.item)?.name || c.item}</div>
-                <div className="flex items-center gap-3">
-                  <span className="text-slate-500">Qty: {c.qty}</span>
-                  <button onClick={()=>removeConsumable(i)} className="rounded-md border border-slate-300 px-2 py-1 text-slate-700 hover:bg-slate-50">Remove</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      
 
       <div className="rounded-xl border border-slate-200 bg-white p-4">
         <div className="text-base font-semibold text-slate-800">Selected Tests ({selectedTests.length})</div>

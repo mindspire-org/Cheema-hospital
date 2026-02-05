@@ -4,7 +4,6 @@ import { Types } from 'mongoose'
 import { FinanceJournal } from '../models/FinanceJournal'
 import { Vendor } from '../models/Vendor'
 import { RecurringPayment } from '../models/RecurringPayment'
-import { BusinessDay } from '../models/BusinessDay'
 
 function todayIsoCutoff12(){
   const now = new Date()
@@ -15,9 +14,29 @@ function todayIsoCutoff12(){
 
 // ========== Vendors ==========
 const vendorSchema = z.object({ name: z.string().min(1), phone: z.string().optional(), address: z.string().optional() })
-export async function listVendors(_req: Request, res: Response){
-  const rows = await Vendor.find({}).sort({ name: 1 }).lean()
-  res.json({ vendors: rows })
+const vendorQuerySchema = z.object({ q: z.string().optional(), page: z.string().optional(), limit: z.string().optional() })
+export async function listVendors(req: Request, res: Response){
+  const parsed = vendorQuerySchema.safeParse(req.query)
+  const { q, page, limit } = parsed.success ? parsed.data : {}
+  const filter: any = {}
+  if (q && q.trim()){
+    const rx = new RegExp(q.trim(), 'i')
+    filter.$or = [ { name: rx }, { phone: rx }, { address: rx } ]
+  }
+
+  // If page/limit specified, paginate; otherwise return full list for backward compatibility
+  if (page || limit){
+    const effectiveLimit = Math.max(1, Math.min(100, parseInt(String(limit||'10'), 10) || 10))
+    const currentPage = Math.max(1, parseInt(String(page||'1'), 10) || 1)
+    const skip = (currentPage - 1) * effectiveLimit
+    const total = await Vendor.countDocuments(filter)
+    const items = await Vendor.find(filter).sort({ name: 1 }).skip(skip).limit(effectiveLimit).lean()
+    const totalPages = Math.max(1, Math.ceil(total / effectiveLimit))
+    return res.json({ vendors: items, total, page: currentPage, totalPages })
+  }
+
+  const rows = await Vendor.find(filter).sort({ name: 1 }).lean()
+  res.json({ vendors: rows, total: rows.length, page: 1, totalPages: 1 })
 }
 export async function createVendor(req: Request, res: Response){
   const data = vendorSchema.parse(req.body)
@@ -211,26 +230,4 @@ export async function combinedCashBank(req: Request, res: Response){
     aesthetic = await agg(AestheticFinanceJournal)
   } catch {}
   res.json({ from, to, hospital, diagnostic: aesthetic, pharmacy: { cash: { account: 'CASH', inflow: 0, outflow: 0, net: 0 }, bank: { account: 'BANK', inflow: 0, outflow: 0, net: 0 } }, lab: { cash: { account: 'CASH', inflow: 0, outflow: 0, net: 0 }, bank: { account: 'BANK', inflow: 0, outflow: 0, net: 0 } } })
-}
-
-// ========== Business Day open/close ==========
-const daySchema = z.object({ dateIso: z.string().optional(), note: z.string().optional() })
-export async function dayStatus(_req: Request, res: Response){
-  const today = todayIsoCutoff12()
-  const open = await BusinessDay.findOne({ status: 'open' }).sort({ createdAt: -1 }).lean()
-  res.json({ today, open })
-}
-export async function openDay(req: Request, res: Response){
-  const q = daySchema.parse(req.body)
-  const dateIso = q.dateIso || todayIsoCutoff12()
-  const existing: any = await BusinessDay.findOne({ dateIso }).lean()
-  if (existing && String(existing.status) === 'open') return res.json({ day: existing })
-  const row = await BusinessDay.create({ dateIso, status: 'open', note: q.note })
-  res.status(201).json({ day: row })
-}
-export async function closeDay(req: Request, res: Response){
-  const q = daySchema.parse(req.body)
-  const dateIso = q.dateIso || todayIsoCutoff12()
-  const row = await BusinessDay.findOneAndUpdate({ dateIso }, { status: 'closed', closedAt: new Date(), note: q.note }, { new: true, upsert: true }).lean()
-  res.json({ day: row })
 }

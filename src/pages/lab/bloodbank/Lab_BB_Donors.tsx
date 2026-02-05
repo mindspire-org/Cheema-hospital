@@ -4,6 +4,7 @@ import BB_AddDonor from '../../../components/lab/bloodbank/BB_AddDonor'
 import BB_DonorProfile from '../../../components/lab/bloodbank/BB_DonorProfile'
 import type { Donor } from '../../../components/lab/bloodbank/BB_AddDonor'
 import { labApi } from '../../../utils/api'
+import BB_AddBag from '../../../components/lab/bloodbank/BB_AddBag'
 
 export default function Lab_BB_Donors(){
   const [donors, setDonors] = useState<Donor[]>([])
@@ -13,6 +14,8 @@ export default function Lab_BB_Donors(){
   const [editDonor, setEditDonor] = useState<Donor | undefined>(undefined)
   const [openProfile, setOpenProfile] = useState(false)
   const [profileDonor, setProfileDonor] = useState<Donor | undefined>(undefined)
+  const [openBag, setOpenBag] = useState(false)
+  const [bagInitial, setBagInitial] = useState<{ id: string; donor: string; type: string; vol: number; coll: string; exp: string; status: string } | undefined>(undefined)
   const [loading, setLoading] = useState(false)
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(10)
@@ -63,6 +66,26 @@ export default function Lab_BB_Donors(){
           <div className="text-2xl font-semibold">Donors</div>
           <div className="text-sm text-slate-500">Manage donor records and registrations.</div>
         </div>
+      <BB_AddBag
+        open={openBag}
+        initial={bagInitial as any}
+        onClose={()=>setOpenBag(false)}
+        onCreate={async (r)=>{
+          try {
+            await labApi.createBBBag({
+              bagId: r.id,
+              donorName: r.donor,
+              bloodType: r.type,
+              volume: r.vol,
+              collectionDate: r.coll,
+              expiryDate: r.exp,
+              status: r.status,
+              notes: (r as any).notes,
+            })
+            setOpenBag(false)
+          } catch {}
+        }}
+      />
         <div className="flex items-center gap-2">
           <input value={qDraft} onChange={e=>setQDraft(e.target.value)} placeholder="Search name/phone/cnic" className="w-56 rounded-md border border-slate-300 px-2 py-1 text-sm" />
           <button onClick={()=>{ setPage(1); setQ(qDraft.trim()); }} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm">Search</button>
@@ -78,6 +101,12 @@ export default function Lab_BB_Donors(){
           onSelect={(id)=>setSel(id)}
           onView={(id)=>{ const d = donors.find(x=>x.id===id); setProfileDonor(d); setOpenProfile(Boolean(d)); }}
           onEdit={(id)=>{ const d = donors.find(x=>x.id===id); setEditDonor(d); setOpenEdit(Boolean(d)); }}
+          onAddToInventory={(id)=>{
+            const d = donors.find(x=>x.id===id)
+            if (!d) return
+            setBagInitial({ id: '', donor: d.name, type: d.type || '', vol: 450, coll: '', exp: '', status: 'Available' })
+            setOpenBag(true)
+          }}
           onDelete={async (id)=>{
             try {
               await labApi.deleteBBDonor(id)

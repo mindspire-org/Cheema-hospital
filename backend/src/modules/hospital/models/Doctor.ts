@@ -12,6 +12,7 @@ const DoctorSchema = new Schema({
   specialization: { type: String },
   qualification: { type: String },
   cnic: { type: String },
+  pmdcNo: { type: String },
   shares: { type: Number }, // percentage
   active: { type: Boolean, default: true },
 }, { timestamps: true })
@@ -29,6 +30,7 @@ export type HospitalDoctorDoc = {
   specialization?: string
   qualification?: string
   cnic?: string
+  pmdcNo?: string
   shares?: number
   active: boolean
 }

@@ -159,6 +159,8 @@ export async function create(req: Request, res: Response){
     invoice: data.invoice,
     supplierId: data.supplierId,
     supplierName: data.supplierName,
+    companyId: (data as any).companyId,
+    companyName: (data as any).companyName,
     invoiceTaxes: data.invoiceTaxes || [],
     totals,
     lines,
@@ -193,6 +195,8 @@ export async function update(req: Request, res: Response){
         invoice: data.invoice,
         supplierId: data.supplierId,
         supplierName: data.supplierName,
+        companyId: (data as any).companyId,
+        companyName: (data as any).companyName,
         invoiceTaxes: data.invoiceTaxes || [],
         totals,
         lines,
@@ -252,6 +256,7 @@ export async function approve(req: Request, res: Response){
     if (l.category) update.$set.category = l.category
     if (l.genericName) update.$set.genericName = l.genericName
     if (l.minStock != null) update.$set.minStock = l.minStock
+    if (l.defaultDiscountPct != null) update.$set.defaultDiscountPct = Math.max(0, Math.min(100, Number(l.defaultDiscountPct)))
     if (salePerUnit) update.$set.lastSalePerUnit = salePerUnit
 
     // earliestExpiry: keep min date using $min on ISO string (yyyy-mm-dd)
@@ -268,6 +273,8 @@ export async function approve(req: Request, res: Response){
     invoice: draft.invoice,
     supplierId: draft.supplierId,
     supplierName: draft.supplierName,
+    companyId: (draft as any).companyId,
+    companyName: (draft as any).companyName,
     totals: draft.totals,
     totalAmount: Number(totalAmount || 0),
     lines: draft.lines || [],

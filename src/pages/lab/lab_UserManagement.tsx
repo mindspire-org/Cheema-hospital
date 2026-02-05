@@ -5,11 +5,11 @@ type User = { _id: string; username: string; role: string }
 
 export default function Lab_UserManagement() {
   const [users, setUsers] = useState<User[]>([])
-  const [roles, setRoles] = useState<string[]>(['admin','technician','reception'])
+  const [roles, setRoles] = useState<string[]>([])
   const [newRoleName, setNewRoleName] = useState('')
   const [creatingRole, setCreatingRole] = useState(false)
   const [newUsername, setNewUsername] = useState('')
-  const [newRole, setNewRole] = useState<string>('technician')
+  const [newRole, setNewRole] = useState<string>('')
   const [newPassword, setNewPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [editing, setEditing] = useState<{ _id: string; username: string; role: string } | null>(null)
@@ -32,7 +32,10 @@ export default function Lab_UserManagement() {
         if (!mounted) return
         if (rolesRes.status === 'fulfilled'){
           const list = (rolesRes.value?.items || []) as string[]
-          if (Array.isArray(list) && list.length) setRoles(list)
+          if (Array.isArray(list)) {
+            setRoles(list)
+            if (!newRole && list.length) setNewRole(list[0])
+          }
         }
         if (usersRes.status === 'fulfilled'){
           const arr = (usersRes.value?.items || usersRes.value || []) as any[]
@@ -49,10 +52,11 @@ export default function Lab_UserManagement() {
     setAddUserError('')
     if (!newUsername.trim()) { setAddUserError('Username is required'); return }
     if (!newPassword || newPassword.length < 4) { setAddUserError('Password must be at least 4 characters'); return }
+    if (!newRole) { setAddUserError('Please select a role (or create one first)'); return }
     try {
       const created = await labApi.createUser({ username: newUsername.trim(), password: newPassword, role: newRole }) as any
       setUsers(prev => [...prev, { _id: String(created?._id), username: created?.username || newUsername.trim(), role: created?.role || newRole }])
-      setNewUsername(''); setNewPassword(''); setNewRole('technician')
+      setNewUsername(''); setNewPassword(''); setNewRole((roles[0] as any) || '')
       setNotice({ text: 'User added', kind: 'success' })
       try { setTimeout(()=> setNotice(null), 2500) } catch {}
     } catch (e: any) {
@@ -183,6 +187,7 @@ export default function Lab_UserManagement() {
               <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(220px,1fr)_auto_minmax(220px,1fr)_auto]">
                 <input value={newUsername} onChange={e=>setNewUsername(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Username" />
                 <select value={newRole} onChange={e=>setNewRole(e.target.value)} className="rounded-md border border-slate-300 px-3 py-2 text-sm min-w-[140px]">
+                  {!newRole && <option value="" disabled>Select role</option>}
                   {(roles||[]).map(r=> <option key={r} value={r}>{r}</option>)}
                 </select>
                 <input type="password" value={newPassword} onChange={e=>setNewPassword(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Password (min 4 chars)" />

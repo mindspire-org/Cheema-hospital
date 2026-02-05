@@ -9,6 +9,7 @@ type Row = {
   phone?: string
   age?: string
   gender?: string
+  mrNumber?: string
   address?: string
   doctorId?: string
   fee?: number
@@ -74,7 +75,7 @@ export default function Aesthetic_TokenHistoryPage(){
       if (d < start || d > end) return false
       if (doctor !== 'All' && r.doctorId !== doctor) return false
       if (!q) return true
-      return [r.patientName, r.number, r.phone, doctorMap[r.doctorId||'']]
+      return [r.patientName, r.number, r.phone, r.mrNumber, doctorMap[r.doctorId||'']]
         .filter(Boolean)
         .some(v => String(v).toLowerCase().includes(q))
     })
@@ -91,6 +92,7 @@ export default function Aesthetic_TokenHistoryPage(){
       doctorName: doctorMap[t.doctorId || ''] || '-',
       patientName: t.patientName || '-',
       phone: t.phone || '',
+      mrn: t.mrNumber || undefined,
       age: t.age,
       gender: t.gender,
       address: t.address,
@@ -143,7 +145,7 @@ export default function Aesthetic_TokenHistoryPage(){
   }
 
   return (
-    <div className="max-w-6xl mx-auto">
+    <div className="w-full">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100">Token History <span className="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">{filtered.length}</span></h2>
         <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -181,6 +183,7 @@ export default function Aesthetic_TokenHistoryPage(){
               <Th>Date</Th>
               <Th>Time</Th>
               <Th>Token #</Th>
+              <Th>MR #</Th>
               <Th>Patient</Th>
               <Th>Age</Th>
               <Th>Gender</Th>
@@ -199,6 +202,7 @@ export default function Aesthetic_TokenHistoryPage(){
                   <Td>{dt.toLocaleDateString()}</Td>
                   <Td>{dt.toLocaleTimeString()}</Td>
                   <Td>{t.number}</Td>
+                  <Td>{t.mrNumber || '-'}</Td>
                   <Td className="font-medium">{t.patientName || '-'}</Td>
                   <Td>{t.age || '-'}</Td>
                   <Td>{t.gender || '-'}</Td>
@@ -211,7 +215,7 @@ export default function Aesthetic_TokenHistoryPage(){
               )
             })}
             {pageRows.length === 0 && (
-              <tr><td className="px-4 py-6 text-center text-slate-500 dark:text-slate-400" colSpan={11}>No tokens</td></tr>
+              <tr><td className="px-4 py-6 text-center text-slate-500 dark:text-slate-400" colSpan={12}>No tokens</td></tr>
             )}
           </tbody>
         </table>

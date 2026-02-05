@@ -1,13 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Pharmacy_AddExpenseDialog from '../../components/pharmacy/pharmacy_AddExpenseDialog'
 import { pharmacyApi } from '../../utils/api'
+import Pharmacy_SalarySlipDialog from '../../components/pharmacy/pharmacy_SalarySlipDialog'
 
 type Expense = {
   id: string
   date: string // yyyy-mm-dd
+  datetime?: string // iso datetime
   type: 'Rent' | 'Utilities' | 'Supplies' | 'Salaries' | 'Maintenance' | 'Other'
   note: string
   amount: number
+  createdBy?: string
 }
 
 export default function Pharmacy_Expenses() {
@@ -16,6 +19,8 @@ export default function Pharmacy_Expenses() {
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [totalPages, setTotalPages] = useState(1)
+  const [slipOpen, setSlipOpen] = useState(false)
+  const [slipExp, setSlipExp] = useState<Expense | null>(null)
 
   // Filters
   const [from, setFrom] = useState('')
@@ -23,18 +28,28 @@ export default function Pharmacy_Expenses() {
   const [etype, setEtype] = useState<'All Types' | Expense['type']>('All Types')
   const [minAmount, setMinAmount] = useState<number>(0)
   const [search, setSearch] = useState('')
+  const [user, setUser] = useState('')
   const [tick, setTick] = useState(0)
 
   // Add expense dialog
   const [addOpen, setAddOpen] = useState(false)
 
+  // Current pharmacy username to stamp expenses
+  const currentUser = useMemo(() => {
+    try {
+      const raw = localStorage.getItem('pharmacy.user')
+      if (raw) { const u = JSON.parse(raw); if (u && typeof u.username === 'string') return u.username }
+    } catch {}
+    try { return localStorage.getItem('pharma_user') || 'admin' } catch { return 'admin' }
+  }, [])
+
   useEffect(() => {
     let mounted = true
     ;(async () => {
       try {
-        const res: any = await pharmacyApi.listExpenses({ from: from || undefined, to: to || undefined, minAmount, search: search || undefined, type: etype === 'All Types' ? undefined : etype, page, limit })
+        const res: any = await pharmacyApi.listExpenses({ from: from || undefined, to: to || undefined, minAmount, search: search || undefined, type: etype === 'All Types' ? undefined : etype, user: user || undefined, page, limit })
         if (!mounted) return
-        const mapped: Expense[] = (res.items || []).map((x: any) => ({ id: x._id, date: x.date, type: x.type, note: x.note || '', amount: x.amount }))
+        const mapped: Expense[] = (res.items || []).map((x: any) => ({ id: x._id, date: x.date, datetime: x.datetime, type: x.type, note: x.note || '', amount: x.amount, createdBy: x.createdBy }))
         setItems(mapped)
         setTotal(Number(res.total || mapped.length || 0))
         setTotalPages(Number(res.totalPages || 1))
@@ -44,9 +59,15 @@ export default function Pharmacy_Expenses() {
     })()
     return () => { mounted = false }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tick, from, to, minAmount, search, etype, page, limit])
+  }, [tick, from, to, minAmount, search, user, etype, page, limit])
 
   const refresh = () => setTick(t=>t+1)
+
+  useEffect(()=>{
+    const onRefresh = () => { setPage(1); refresh() }
+    try { window.addEventListener('pharmacy:expenses:refresh', onRefresh as any) } catch {}
+    return () => { try { window.removeEventListener('pharmacy:expenses:refresh', onRefresh as any) } catch {} }
+  }, [])
 
   
 
@@ -60,8 +81,15 @@ export default function Pharmacy_Expenses() {
       const s = String(v ?? '')
       return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
     }
-    const header = ['Date','Type','Note','Amount'].map(escape).join(',')
-    const lines = items.map(e => [e.date, e.type, e.note, e.amount.toFixed(2)].map(escape).join(',')).join('\n')
+    const header = ['Date','Time','Amount','Note','Type','User'].map(escape).join(',')
+    const lines = items.map(e => [
+      e.date,
+      e.datetime ? new Date(e.datetime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
+      e.amount.toFixed(2),
+      e.note,
+      e.type,
+      e.createdBy || ''
+    ].map(escape).join(',')).join('\n')
     const csv = header + '\n' + lines
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
@@ -90,10 +118,12 @@ export default function Pharmacy_Expenses() {
     const pageH = doc.internal.pageSize.getHeight()
     doc.setFont('courier', 'normal')
     const cols = [
-      { key: 'date', title: 'Date', width: 36 },
-      { key: 'type', title: 'Type', width: 36 },
-      { key: 'note', title: 'Note', width: 160 },
-      { key: 'amount', title: 'Amount', width: 32 },
+      { key: 'date', title: 'Date', width: 32 },
+      { key: 'time', title: 'Time', width: 24 },
+      { key: 'amount', title: 'Amount', width: 30 },
+      { key: 'note', title: 'Note', width: 120 },
+      { key: 'type', title: 'Type', width: 30 },
+      { key: 'user', title: 'User', width: 36 },
     ] as const
     const drawHeader = (y: number) => {
       doc.setFontSize(12)
@@ -110,7 +140,8 @@ export default function Pharmacy_Expenses() {
     let y = drawHeader(margin)
     doc.setFontSize(8)
     for (const e of items) {
-      const data = [e.date, e.type, e.note, `Rs ${e.amount.toFixed(2)}`]
+      const timeStr = e.datetime ? new Date(e.datetime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
+      const data = [e.date, timeStr, `Rs ${e.amount.toFixed(2)}`, e.note, e.type, e.createdBy || '']
       const lines = data.map((v, i) => (doc as any).splitTextToSize(v, cols[i].width - 2)) as string[][]
       const maxLines = Math.max(1, ...lines.map(a => a.length))
       if (y + maxLines * 4 + 6 > pageH - margin) {
@@ -167,6 +198,10 @@ export default function Pharmacy_Expenses() {
             <label className="mb-1 block text-sm text-slate-700">Minimum Amount</label>
             <input type="number" value={minAmount} onChange={e=>setMinAmount(parseFloat(e.target.value || '0'))} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" />
           </div>
+          <div>
+            <label className="mb-1 block text-sm text-slate-700">User</label>
+            <input value={user} onChange={e=>setUser(e.target.value)} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" placeholder="Username" />
+          </div>
           <div className="flex items-end gap-2">
             <button type="button" onClick={()=>{ setPage(1); refresh() }} className="btn">Apply</button>
             <select value={limit} onChange={e=>{ setLimit(parseInt(e.target.value)); setPage(1) }} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm text-slate-700">
@@ -193,9 +228,11 @@ export default function Pharmacy_Expenses() {
             <thead className="bg-slate-50 text-slate-700">
               <tr>
                 <th className="px-4 py-2 font-medium">Date</th>
+                <th className="px-4 py-2 font-medium">Time</th>
                 <th className="px-4 py-2 font-medium">Type</th>
                 <th className="px-4 py-2 font-medium">Note</th>
                 <th className="px-4 py-2 font-medium">Amount</th>
+                <th className="px-4 py-2 font-medium">User</th>
                 <th className="px-4 py-2 font-medium"></th>
               </tr>
             </thead>
@@ -203,17 +240,24 @@ export default function Pharmacy_Expenses() {
               {items.map(e => (
                 <tr key={e.id}>
                   <td className="px-4 py-2">{e.date}</td>
+                  <td className="px-4 py-2">{e.datetime ? new Date(e.datetime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</td>
                   <td className="px-4 py-2">{e.type}</td>
                   <td className="px-4 py-2">{e.note}</td>
                   <td className="px-4 py-2 font-semibold">PKR {e.amount.toLocaleString()}</td>
+                  <td className="px-4 py-2">{e.createdBy || ''}</td>
                   <td className="px-4 py-2 text-right">
-                    <button type="button" onClick={()=>remove(e.id)} className="rounded-md bg-rose-600 px-2 py-1 text-xs text-white hover:bg-rose-700">Delete</button>
+                    <div className="flex items-center justify-end gap-2">
+                      {e.type === 'Salaries' && (
+                        <button type="button" onClick={()=>{ setSlipExp(e); setSlipOpen(true) }} className="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50">Slip</button>
+                      )}
+                      <button type="button" onClick={()=>remove(e.id)} className="rounded-md bg-rose-600 px-2 py-1 text-xs text-white hover:bg-rose-700">Delete</button>
+                    </div>
                   </td>
                 </tr>
               ))}
               {items.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-12 text-center text-slate-500">No expenses found</td>
+                  <td colSpan={7} className="px-4 py-12 text-center text-slate-500">No expenses found</td>
                 </tr>
               )}
             </tbody>
@@ -237,12 +281,13 @@ export default function Pharmacy_Expenses() {
         open={addOpen}
         onClose={() => setAddOpen(false)}
         onSave={async (exp) => {
-          await pharmacyApi.createExpense(exp)
+          await pharmacyApi.createExpense({ ...exp, createdBy: currentUser })
           setAddOpen(false)
           setPage(1)
           refresh()
         }}
       />
+      <Pharmacy_SalarySlipDialog open={slipOpen} onClose={()=>{ setSlipOpen(false); setSlipExp(null) }} expense={slipExp || undefined as any} />
     </div>
   )
 }

@@ -9,6 +9,12 @@ const BBBagSchema = new Schema({
   expiryDate: { type: String },
   status: { type: String, enum: ['Available','Quarantined','Used','Expired'], default: 'Available' },
   notes: { type: String },
+  reservedByReceiverId: { type: String },
+  reservedByReceiverCode: { type: String },
+  reservedAt: { type: String },
+  usedByReceiverId: { type: String },
+  usedByReceiverCode: { type: String },
+  usedAt: { type: String },
 }, { timestamps: true, collection: 'lab_bb_bags' })
 
 export type LabBBBagDoc = {
@@ -21,6 +27,12 @@ export type LabBBBagDoc = {
   expiryDate?: string
   status: 'Available'|'Quarantined'|'Used'|'Expired'
   notes?: string
+  reservedByReceiverId?: string
+  reservedByReceiverCode?: string
+  reservedAt?: string
+  usedByReceiverId?: string
+  usedByReceiverCode?: string
+  usedAt?: string
 }
 
 export const LabBBBag = models.Lab_BB_Bag || model('Lab_BB_Bag', BBBagSchema)

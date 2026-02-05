@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 export type HospitalDoctorInput = {
   name: string
   cnic: string
+  pmdcNo: string
   specialization: string
   qualification: string
   phone: string
@@ -25,12 +26,12 @@ export default function Hospital_AddDoctorDialog({
   departments: Array<{ id: string; name: string }>
 }) {
   const [form, setForm] = useState<HospitalDoctorInput>({
-    name: '', cnic: '', specialization: '', qualification: '', phone: '', fee: '0', shares: '0', username: '', password: '', primaryDepartmentId: ''
+    name: '', cnic: '', pmdcNo: '', specialization: '', qualification: '', phone: '', fee: '0', shares: '0', username: '', password: '', primaryDepartmentId: ''
   })
 
   useEffect(() => {
     if (open) {
-      setForm({ name: '', cnic: '', specialization: '', qualification: '', phone: '', fee: '0', shares: '0', username: '', password: '', primaryDepartmentId: '' })
+      setForm({ name: '', cnic: '', pmdcNo: '', specialization: '', qualification: '', phone: '', fee: '0', shares: '0', username: '', password: '', primaryDepartmentId: '' })
     }
   }, [open])
 
@@ -55,6 +56,10 @@ export default function Hospital_AddDoctorDialog({
           <div>
             <label className="mb-1 block text-sm text-slate-700">CNIC</label>
             <input value={form.cnic} onChange={e=>update('cnic', e.target.value)} placeholder="13-digit CNIC (no dashes)" className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm text-slate-700">PMDC No</label>
+            <input value={form.pmdcNo} onChange={e=>update('pmdcNo', e.target.value)} placeholder="e.g., 12345-ABC" className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
           </div>
           <div>
             <label className="mb-1 block text-sm text-slate-700">Password</label>
@@ -86,7 +91,7 @@ export default function Hospital_AddDoctorDialog({
             <input value={form.fee} onChange={e=>update('fee', e.target.value)} placeholder="0" className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
           </div>
           <div>
-            <label className="mb-1 block text-sm text-slate-700">Shares (%)</label>
+            <label className="mb-1 block text-sm text-slate-700">OPD Share</label>
             <input value={form.shares} onChange={e=>update('shares', e.target.value)} placeholder="0" className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
           </div>
           <div>

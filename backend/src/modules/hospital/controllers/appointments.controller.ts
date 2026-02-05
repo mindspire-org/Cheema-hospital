@@ -9,8 +9,7 @@ import { HospitalDepartment } from '../models/Department'
 import { HospitalEncounter } from '../models/Encounter'
 import { HospitalAuditLog } from '../models/AuditLog'
 import { postOpdTokenJournal } from './finance_ledger'
-import { HospitalSettings } from '../models/Settings'
-import { LabCounter } from '../../lab/models/Counter'
+import { nextGlobalMrn } from '../../../common/mrn'
 
 function toMin(hhmm: string){ const [h,m] = (hhmm||'').split(':').map(x=>parseInt(x,10)||0); return h*60+m }
 function fromMin(min: number){ const h = Math.floor(min/60).toString().padStart(2,'0'); const m = (min%60).toString().padStart(2,'0'); return `${h}:${m}` }
@@ -33,43 +32,6 @@ function normalizePhone(p?: string){
   return digits
 }
 
-async function nextMrn(){
-  const now = new Date()
-  const year = now.getFullYear()
-  const yy = String(year).slice(-2)
-  const mm = String(now.getMonth()+1).padStart(2,'0')
-  const yymm = yy+mm
-  const key = `lab_mrn_${yymm}`
-  const c: any = await LabCounter.findByIdAndUpdate(key, { $inc: { seq: 1 } }, { upsert: true, new: true, setDefaultsOnInsert: true })
-  const seqNum = Number(c?.seq || 1)
-
-  let fmt = ''
-  let hospCode = ''
-  try {
-    const s: any = await HospitalSettings.findOne().lean()
-    fmt = String(s?.mrFormat || '').trim()
-    hospCode = String(s?.code || '').trim()
-  } catch {}
-
-  if (fmt) {
-    const widthMatch = fmt.match(/\{SERIAL(\d+)\}/i)
-    const width = widthMatch ? Math.max(1, parseInt(widthMatch[1], 10) || 6) : 6
-    const serial = String(seqNum).padStart(width, '0')
-    let out = fmt
-    out = out.replace(/\{HOSP\}/gi, hospCode || 'HOSP')
-    out = out.replace(/\{DEPT\}/gi, 'OPD')
-    out = out.replace(/\{YEAR\}/gi, String(year))
-    out = out.replace(/\{YYYY\}/gi, String(year))
-    out = out.replace(/\{YY\}/gi, yy)
-    out = out.replace(/\{MONTH\}/gi, mm)
-    out = out.replace(/\{MM\}/gi, mm)
-    out = out.replace(/\{SERIAL\d*\}/gi, serial)
-    return out
-  }
-
-  const seq = String(seqNum).padStart(6,'0')
-  return `MR-${yymm}-${seq}`
-}
 
 function resolveOPDFeeSimple({ department, doctor, schedule }: any){
   // Prefer schedule fee if provided
@@ -241,7 +203,7 @@ export async function convertToToken(req: Request, res: Response){
       patient = await LabPatient.findById(appt.patientId)
       if (!patient) return res.status(404).json({ error: 'Linked patient not found' })
     } else {
-      const mrn = await nextMrn()
+      const mrn = await nextGlobalMrn()
       patient = await LabPatient.create({
         mrn,
         fullName: appt.patientName || 'Patient',

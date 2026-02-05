@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { hospitalApi } from "../../utils/api";
+import { financeApi } from "../../utils/api";
 
 export default function Finance_Login() {
   const navigate = useNavigate();
@@ -29,21 +29,18 @@ export default function Finance_Login() {
     }
 
     try {
-      const res: any = await hospitalApi.loginHospitalUser(uname, password);
+      const res: any = await financeApi.login(uname, password);
       const u = res?.user;
-
-      if (!u || String(u.role) !== "Finance") {
-        setError("Not a Finance user");
+      if (!u) {
+        setError("Invalid credentials");
         return;
       }
-
       try {
         localStorage.setItem(
           "finance.session",
           JSON.stringify({ username: u.username, role: u.role })
         );
       } catch {}
-
       navigate("/finance");
     } catch (err: any) {
       setError(err?.message || "Invalid credentials");

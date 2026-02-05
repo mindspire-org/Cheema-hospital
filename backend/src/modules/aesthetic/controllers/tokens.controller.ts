@@ -3,8 +3,8 @@ import { AestheticToken } from '../models/Token'
 import { ProcedureSession } from '../models/ProcedureSession'
 import { AestheticCounter } from '../models/Counter'
 import { LabPatient } from '../../lab/models/Patient'
-import { LabCounter } from '../../lab/models/Counter'
-import { HospitalSettings } from '../../hospital/models/Settings'
+import { nextGlobalMrn } from '../../../common/mrn'
+import { postOpdTokenJournal } from './finance_ledger'
 
 function dateKey(dateIso?: string){
   const d = dateIso ? new Date(dateIso) : new Date()
@@ -22,43 +22,6 @@ async function allocNumber(dateIso?: string){
 
 function normDigits(s?: string){ return (s||'').replace(/\D+/g,'') }
 function normLower(s?: string){ return (s||'').trim().toLowerCase().replace(/\s+/g,' ') }
-async function nextMrn(){
-  const now = new Date()
-  const year = now.getFullYear()
-  const yy = String(year).slice(-2)
-  const mm = String(now.getMonth()+1).padStart(2,'0')
-  const yymm = yy+mm
-  const key = `lab_mrn_${yymm}`
-  const c = await LabCounter.findByIdAndUpdate(key, { $inc: { seq: 1 } }, { upsert: true, new: true, setDefaultsOnInsert: true })
-  const seqNum = Number((c as any)?.seq || 1)
-
-  let fmt = ''
-  let hospCode = ''
-  try {
-    const s: any = await HospitalSettings.findOne().lean()
-    fmt = String(s?.mrFormat || '').trim()
-    hospCode = String(s?.code || '').trim()
-  } catch {}
-
-  if (fmt) {
-    const widthMatch = fmt.match(/\{SERIAL(\d+)\}/i)
-    const width = widthMatch ? Math.max(1, parseInt(widthMatch[1], 10) || 6) : 6
-    const serial = String(seqNum).padStart(width, '0')
-    let out = fmt
-    out = out.replace(/\{HOSP\}/gi, hospCode || 'HOSP')
-    out = out.replace(/\{DEPT\}/gi, 'AEST')
-    out = out.replace(/\{YEAR\}/gi, String(year))
-    out = out.replace(/\{YYYY\}/gi, String(year))
-    out = out.replace(/\{YY\}/gi, yy)
-    out = out.replace(/\{MONTH\}/gi, mm)
-    out = out.replace(/\{MM\}/gi, mm)
-    out = out.replace(/\{SERIAL\d*\}/gi, serial)
-    return out
-  }
-
-  const seq = String(seqNum).padStart(6,'0')
-  return `MR-${yymm}-${seq}`
-}
 
 async function ensureLabPatient(body: any){
   const name = String(body.patientName||'')
@@ -110,7 +73,7 @@ async function ensureLabPatient(body: any){
       if (exact) return exact
     }
   }
-  const mrn = await nextMrn()
+  const mrn = await nextGlobalMrn()
   const nowIso = new Date().toISOString()
   const created = await LabPatient.create({
     mrn,
@@ -206,6 +169,21 @@ export async function create(req: Request, res: Response){
     status: body.status || 'queued',
     createdAtIso: nowIso,
   })
+  // Finance: post OPD revenue and doctor share accrual for Aesthetic
+  try {
+    if (body.doctorId && fee > 0) {
+      await postOpdTokenJournal({
+        tokenId: String((doc as any)._id),
+        dateIso: String(dateIso).slice(0,10),
+        fee: Math.max(0, Number(fee||0)),
+        doctorId: String(body.doctorId),
+        patientName: String(body.patientName||''),
+        mrn: String((doc as any)?.mrNumber || ''),
+        tokenNo: String((doc as any)?.number || ''),
+        paidMethod: 'Cash',
+      })
+    }
+  } catch (e) { console.warn('Aesthetic OPD finance posting failed', e) }
   res.status(201).json({ token: doc })
 }
 

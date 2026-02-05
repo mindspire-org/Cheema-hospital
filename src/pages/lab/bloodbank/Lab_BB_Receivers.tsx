@@ -104,6 +104,24 @@ export default function Lab_BB_Receivers(){
         onSelect={(id)=>setSelectedId(id)}
         onView={(id)=>{ const rec = rows.find(r=>r.id===id); setProfileRec(rec); setOpenProfile(Boolean(rec)); }}
         onEdit={(id)=>{ const rec = rows.find(r=>r.id===id); setEditRec(rec); setOpenEdit(Boolean(rec)); }}
+        onApprove={async (id)=>{
+          try {
+            await labApi.updateBBReceiver(id, { status: 'APPROVED' })
+            setRefreshTick(t=>t+1)
+          } catch (e: any) {
+            const msg = e?.message || 'Failed to approve receiver'
+            alert(msg)
+          }
+        }}
+        onDispense={async (id)=>{
+          try {
+            await labApi.updateBBReceiver(id, { status: 'DISPENSED' })
+            setRefreshTick(t=>t+1)
+          } catch (e: any) {
+            const msg = e?.message || 'Failed to dispense units'
+            alert(msg)
+          }
+        }}
         onDelete={async (id)=>{
           try {
             await labApi.deleteBBReceiver(id)

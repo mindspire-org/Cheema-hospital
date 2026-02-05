@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import Pharmacy_AddSupplierDialog, { type Supplier } from '../../components/pharmacy/pharmacy_AddSupplierDialog'
 import Pharmacy_SupplierDetailsDialog from '../../components/pharmacy/pharmacy_SupplierDetailsDialog'
+import Pharmacy_AssignSupplierCompaniesDialog from '../../components/pharmacy/pharmacy_AssignSupplierCompaniesDialog'
 import { pharmacyApi } from '../../utils/api'
 
 export default function Pharmacy_Suppliers() {
@@ -13,6 +14,7 @@ export default function Pharmacy_Suppliers() {
   const [editOpen, setEditOpen] = useState(false)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [selected, setSelected] = useState<Supplier | null>(null)
+  const [assignCompaniesOpen, setAssignCompaniesOpen] = useState(false)
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [paymentFor, setPaymentFor] = useState<string | null>(null)
@@ -80,15 +82,23 @@ export default function Pharmacy_Suppliers() {
   
 
   const addSupplier = async (s: Supplier) => {
-    const created = await pharmacyApi.createSupplier({
-      name: s.name,
-      company: s.company,
-      phone: s.phone,
-      address: s.address,
-      taxId: s.taxId,
-      status: s.status,
-    })
-    setSuppliers(prev => [{ ...s, id: created._id }, ...prev])
+    try {
+      const created = await pharmacyApi.createSupplier({
+        name: s.name,
+        company: s.company,
+        phone: s.phone,
+        address: s.address,
+        taxId: s.taxId,
+        status: s.status,
+      })
+      // If a company was selected in the dialog, assign it to this supplier server-side
+      if (s.companyIds && s.companyIds.length) {
+        try { await pharmacyApi.assignSupplierCompanies(created._id, { companyIds: s.companyIds }) } catch {}
+      }
+      setSuppliers(prev => [{ ...s, id: created._id }, ...prev])
+    } catch (e) {
+      console.error(e)
+    }
   }
   const openEdit = (s: Supplier) => { setSelected(s); setEditOpen(true) }
   const saveEdit = async (s: Supplier) => {
@@ -108,6 +118,8 @@ export default function Pharmacy_Suppliers() {
   }
 
   const openDetails = (s: Supplier) => { setSelected(s); setDetailsOpen(true) }
+
+  const openAssignCompanies = (s: Supplier) => { setSelected(s); setAssignCompaniesOpen(true) }
 
   const startPayment = async (s: Supplier) => {
     setPaymentFor(s.id)
@@ -137,7 +149,9 @@ export default function Pharmacy_Suppliers() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="text-xl font-bold text-slate-800">Supplier Management</div>
-        <button type="button" onClick={()=>setAddOpen(true)} className="btn">+ Add Supplier</button>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={()=>setAddOpen(true)} className="btn">+ Add Supplier</button>
+        </div>
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-3">
@@ -180,6 +194,7 @@ export default function Pharmacy_Suppliers() {
                   <button type="button" onClick={()=>startPayment(s)} className="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50">Record Payment</button>
                   <button type="button" onClick={()=>openEdit(s)} className="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50">✎</button>
                   <button type="button" onClick={()=>remove(s.id)} className="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50">🗑</button>
+                  <button type="button" onClick={()=>openAssignCompanies(s)} className="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50">Assign Companies</button>
                 </div>
               </div>
 
@@ -231,6 +246,7 @@ export default function Pharmacy_Suppliers() {
       <Pharmacy_AddSupplierDialog open={addOpen} onClose={()=>setAddOpen(false)} onSave={addSupplier} />
       <Pharmacy_AddSupplierDialog open={editOpen} onClose={()=>setEditOpen(false)} onSave={saveEdit} initial={selected ?? undefined} title="Edit Supplier" submitLabel="Save" />
       <Pharmacy_SupplierDetailsDialog open={detailsOpen} onClose={()=>setDetailsOpen(false)} supplier={selected} />
+      <Pharmacy_AssignSupplierCompaniesDialog open={assignCompaniesOpen} onClose={()=>setAssignCompaniesOpen(false)} supplier={selected} />
     </div>
   )
 }

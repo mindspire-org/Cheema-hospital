@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { labApi } from '../../utils/api'
-import Lab_StaffReportDialog from '../../components/lab/lab_StaffReportDialog'
+import { hospitalApi } from '../../utils/api'
+import Hospital_StaffReportDialog from '../../components/hospital/hospital_StaffReportDialog'
 
 type Staff = { id: string; name: string; position?: string; shiftId?: string; salary?: number }
 type Attendance = { id?: string; staffId: string; date: string; shiftId?: string; status: 'present'|'absent'|'leave'; clockIn?: string; clockOut?: string; notes?: string }
@@ -9,7 +9,7 @@ function toMinutes(hm?: string){ if(!hm) return 0; const [h,m] = (hm||'').split(
 function fmtHours(min: number){ const h = Math.floor(min/60); const m = Math.round(min%60); return `${h}h ${m}m` }
 function nowTime(){ const d=new Date(); return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}` }
 
-export default function Pharmacy_StaffMonthly(){
+export default function Hospital_StaffMonthly(){
   const [month, setMonth] = useState<string>(new Date().toISOString().slice(0,7))
   const [selectedStaffId, setSelectedStaffId] = useState<string>('')
   const [reportOpen, setReportOpen] = useState(false)
@@ -22,9 +22,10 @@ export default function Pharmacy_StaffMonthly(){
     let mounted = true
     ;(async () => {
       try {
-        const staffRes = await labApi.listStaff({ limit: 1000 })
+        const staffRes = await hospitalApi.listStaff()
         if (!mounted) return
-        const list = (staffRes.items||[]).map((x:any)=>({ id: x._id, name: x.name, position: x.position, shiftId: x.shiftId, salary: x.salary }))
+        const raw: any[] = (staffRes?.staff || staffRes?.items || staffRes || [])
+        const list = raw.map((x:any)=>({ id: x._id, name: x.name, position: x.position || x.role, shiftId: x.shiftId, salary: x.salary }))
         setStaff(list)
         if (!selectedStaffId && list[0]) setSelectedStaffId(list[0].id)
       } catch (e) { console.error(e) }
@@ -39,7 +40,7 @@ export default function Pharmacy_StaffMonthly(){
         const from = `${month}-01`
         const to = new Date(Number(month.slice(0,4)), Number(month.slice(5,7)), 0)
         const toStr = `${to.getFullYear()}-${String(to.getMonth()+1).padStart(2,'0')}-${String(to.getDate()).padStart(2,'0')}`
-        const res = await labApi.listAttendance({ from, to: toStr, staffId: selectedStaffId || undefined, limit: 1000 })
+        const res = await hospitalApi.listAttendance({ from, to: toStr, staffId: selectedStaffId || undefined, limit: 1000 })
         if (!mounted) return
         setAtt((res.items||[]).map((x:any)=>({ id: x._id || `${x.staffId}-${x.date}-${x.shiftId||''}`, staffId: x.staffId, date: x.date, shiftId: x.shiftId, status: x.status, clockIn: x.clockIn, clockOut: x.clockOut, notes: x.notes })))
       } catch (e) { console.error(e) }
@@ -89,11 +90,11 @@ export default function Pharmacy_StaffMonthly(){
     if ((type==='in' && alreadyIn) || (type==='out' && alreadyOut)) return
     const payload: any = { staffId: selectedStaffId, date, status: 'present' }
     if (type==='in') payload.clockIn = nowTime(); else payload.clockOut = nowTime()
-    await labApi.upsertAttendance(payload)
+    await hospitalApi.upsertAttendance(payload)
     // refresh
     const to = new Date(Number(month.slice(0,4)), Number(month.slice(5,7)), 0)
     const toStr = `${to.getFullYear()}-${String(to.getMonth()+1).padStart(2,'0')}-${String(to.getDate()).padStart(2,'0')}`
-    const res = await labApi.listAttendance({ from: `${month}-01`, to: toStr, staffId: selectedStaffId })
+    const res = await hospitalApi.listAttendance({ from: `${month}-01`, to: toStr, staffId: selectedStaffId })
     setAtt((res.items||[]).map((x:any)=>({ id: x._id || `${x.staffId}-${x.date}-${x.shiftId||''}`, staffId: x.staffId, date: x.date, shiftId: x.shiftId, status: x.status, clockIn: x.clockIn, clockOut: x.clockOut, notes: x.notes })))
   }
 
@@ -105,7 +106,7 @@ export default function Pharmacy_StaffMonthly(){
     }
     const csv = rowsCsv.map(r=> r.map(x=>`"${String(x).replace(/"/g,'""')}"`).join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `lab_monthly_${month}_${selectedStaff?.name||''}.csv`; a.click(); URL.revokeObjectURL(a.href)
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `hospital_monthly_${month}_${selectedStaff?.name||''}.csv`; a.click(); URL.revokeObjectURL(a.href)
   }
 
   return (
@@ -166,7 +167,7 @@ export default function Pharmacy_StaffMonthly(){
         </div>
       </div>
 
-      <Lab_StaffReportDialog open={reportOpen} onClose={()=>setReportOpen(false)} staffList={staff as any} initialMonth={month} initialStaffId={selectedStaffId || undefined} />
+      <Hospital_StaffReportDialog open={reportOpen} onClose={()=>setReportOpen(false)} staffList={staff as any} initialMonth={month} initialStaffId={selectedStaffId || undefined} />
     </div>
   )
 }

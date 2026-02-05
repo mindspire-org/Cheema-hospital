@@ -7,9 +7,10 @@ type Props = {
   onView?: (id: string) => void
   onEdit?: (id: string) => void
   onDelete?: (id: string) => void
+  onAddToInventory?: (id: string) => void
 }
 
-export default function BB_DonorList({ rows, onSelect, selectedId, onView, onEdit, onDelete }: Props){
+export default function BB_DonorList({ rows, onSelect, selectedId, onView, onEdit, onDelete, onAddToInventory }: Props){
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="mb-2 flex items-center justify-between">
@@ -49,6 +50,7 @@ export default function BB_DonorList({ rows, onSelect, selectedId, onView, onEdi
                     <div className="flex items-center justify-end gap-2">
                       <button title="View" className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50" onClick={(e)=>{ e.stopPropagation(); onView?.(r.id) }}>View</button>
                       <button title="Edit" className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50" onClick={(e)=>{ e.stopPropagation(); onEdit?.(r.id) }}>Edit</button>
+                      <button title="Add to Inventory" className="rounded border border-emerald-300 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-50" onClick={(e)=>{ e.stopPropagation(); onAddToInventory?.(r.id) }}>Add Bag</button>
                       <button title="Delete" className="rounded border border-rose-300 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50" onClick={(e)=>{ e.stopPropagation(); onDelete?.(r.id) }}>Delete</button>
                     </div>
                   </td>

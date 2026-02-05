@@ -14,6 +14,7 @@ const LineSchema = new Schema({
   expiry: { type: String }, // yyyy-mm-dd
   category: { type: String },
   minStock: { type: Number },
+  defaultDiscountPct: { type: Number },
   lineTaxType: { type: String, enum: ['percent','fixed'] },
   lineTaxValue: { type: Number },
   buyPerPackAfterTax: { type: Number, default: 0 },
@@ -25,6 +26,8 @@ const PurchaseDraftSchema = new Schema({
   invoice: { type: String, required: true, index: true },
   supplierId: { type: String },
   supplierName: { type: String },
+  companyId: { type: String },
+  companyName: { type: String },
   invoiceTaxes: { type: [{ name: String, value: Number, type: { type: String, enum: ['percent','fixed'] }, applyOn: { type: String, enum: ['gross','net'] } }], default: [] },
   totals: {
     gross: { type: Number, default: 0 },
@@ -43,6 +46,8 @@ export type PurchaseDraftDoc = {
   invoice: string
   supplierId?: string
   supplierName?: string
+  companyId?: string
+  companyName?: string
   invoiceTaxes?: { name: string; value: number; type: 'percent'|'fixed'; applyOn: 'gross'|'net' }[]
   totals?: { gross:number; discount:number; taxable:number; lineTaxes:number; invoiceTaxes:number; net:number }
   lines: {
@@ -59,6 +64,7 @@ export type PurchaseDraftDoc = {
     expiry?: string
     category?: string
     minStock?: number
+    defaultDiscountPct?: number
     lineTaxType?: 'percent'|'fixed'
     lineTaxValue?: number
     buyPerPackAfterTax?: number

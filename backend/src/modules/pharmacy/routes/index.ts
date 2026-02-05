@@ -5,6 +5,7 @@ import * as Expenses from '../controllers/expenses.controller'
 import * as Settings from '../controllers/settings.controller'
 import * as Staff from '../controllers/staff.controller'
 import * as Shifts from '../controllers/shifts.controller'
+import * as StaffEarnings from '../controllers/staff_earnings.controller'
 import * as Attendance from '../controllers/attendance.controller'
 import * as Sales from '../controllers/dispense.controller'
 import * as Purchases from '../controllers/purchases.controller'
@@ -18,6 +19,7 @@ import * as CashCounts from '../controllers/cash_count.controller'
 import * as Notifications from '../controllers/notifications.controller'
 import * as SidebarPerms from '../controllers/sidebarPermission.controller'
 import * as HoldSales from '../controllers/hold_sales.controller'
+import * as Companies from '../controllers/companies.controller'
 
 const r = Router()
 
@@ -28,6 +30,9 @@ r.put('/suppliers/:id', Suppliers.update)
 r.delete('/suppliers/:id', Suppliers.remove)
 r.post('/suppliers/:id/payment', Suppliers.recordPayment)
 r.get('/suppliers/:id/purchases', Suppliers.purchases)
+// Supplier-Companies
+r.get('/suppliers/:id/companies', Companies.listForSupplier)
+r.post('/suppliers/:id/companies', Companies.assignToSupplier)
 
 // Customers
 r.get('/customers', Customers.list)
@@ -69,6 +74,12 @@ r.post('/shifts', Shifts.create)
 r.put('/shifts/:id', Shifts.update)
 r.delete('/shifts/:id', Shifts.remove)
 
+// Staff Earnings
+r.get('/staff-earnings', StaffEarnings.list)
+r.post('/staff-earnings', StaffEarnings.create)
+r.put('/staff-earnings/:id', StaffEarnings.update)
+r.delete('/staff-earnings/:id', StaffEarnings.remove)
+
 // Attendance
 r.get('/attendance', Attendance.list)
 r.post('/attendance', Attendance.upsert)
@@ -89,6 +100,12 @@ r.get('/purchases', Purchases.list)
 r.post('/purchases', Purchases.create)
 r.delete('/purchases/:id', Purchases.remove)
 r.get('/purchases/summary', Purchases.summary)
+
+// Companies
+r.get('/companies', Companies.list)
+r.post('/companies', Companies.create)
+r.put('/companies/:id', Companies.update)
+r.delete('/companies/:id', Companies.remove)
 
 // Returns (Customer/Supplier)
 r.get('/returns', Returns.list)

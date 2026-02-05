@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { logAudit } from '../../utils/hospital_audit'
-import { hospitalApi, corporateApi, financeApi } from '../../utils/api'
+import { hospitalApi, corporateApi } from '../../utils/api'
 import Hospital_TokenSlip, { type TokenSlipData } from '../../components/hospital/Hospital_TokenSlip'
 
 type SearchOption = { value: string; label: string }
@@ -98,63 +98,7 @@ export default function Hospital_TokenGenerator() {
     corporateCoverageCap: '',
   })
 
-  // Cash drawer session (per user)
-  const [hasHospitalToken, setHasHospitalToken] = useState<boolean>(()=>{
-    try { return !!localStorage.getItem('hospital.token') || !!localStorage.getItem('token') } catch { return false }
-  })
-  useEffect(()=>{
-    const check = () => { try { setHasHospitalToken(!!localStorage.getItem('hospital.token') || !!localStorage.getItem('token')) } catch {} }
-    check()
-    window.addEventListener('storage', check)
-    window.addEventListener('focus', check)
-    document.addEventListener('visibilitychange', check)
-    return () => {
-      window.removeEventListener('storage', check)
-      window.removeEventListener('focus', check)
-      document.removeEventListener('visibilitychange', check)
-    }
-  }, [])
-  const [cashSession, setCashSession] = useState<any|null>(null)
-  useEffect(() => { (async()=>{
-    if (!hasHospitalToken){ setCashSession(null); return }
-    try{
-      const r:any = await financeApi.currentCashSession();
-      setCashSession(r?.session||null)
-    }catch(e:any){ setCashSession(null) }
-  })() }, [hasHospitalToken])
-
-  const [drawerOpenDlg, setDrawerOpenDlg] = useState(false)
-  const [drawerCloseDlg, setDrawerCloseDlg] = useState(false)
-  const [drawerOpeningFloat, setDrawerOpeningFloat] = useState('')
-  const [drawerCountedCash, setDrawerCountedCash] = useState('')
-
-  function openCashDrawer(){
-    if (!hasHospitalToken){ alert('Please login to Hospital to use the cash drawer.'); return }
-    setDrawerOpeningFloat('')
-    setDrawerOpenDlg(true)
-  }
-  async function confirmOpenDrawer(){
-    try{
-      const openingFloat = Number(drawerOpeningFloat || '0')
-      const r:any = await financeApi.openCashSession({ openingFloat: isNaN(openingFloat)?0:openingFloat })
-      setCashSession(r?.session || null)
-      setDrawerOpenDlg(false)
-    }catch(e:any){ alert(String(e?.message||'Failed to open cash drawer')) }
-  }
-  function closeCashDrawer(){
-    if (!hasHospitalToken){ alert('Please login to Hospital to use the cash drawer.'); return }
-    if (!cashSession?._id) return
-    setDrawerCountedCash('')
-    setDrawerCloseDlg(true)
-  }
-  async function confirmCloseDrawer(){
-    try{
-      const counted = Number(drawerCountedCash || '0')
-      const r:any = await financeApi.closeCashSession(String(cashSession._id), { countedCash: isNaN(counted)?0:counted })
-      setCashSession(r?.session || null)
-      setDrawerCloseDlg(false)
-    }catch(e:any){ alert(String(e?.message||'Failed to close cash drawer')) }
-  }
+  
 
   // Scheduling (OPD appointments)
   const [apptDate, setApptDate] = useState<string>(()=> new Date().toISOString().slice(0,10))
@@ -570,7 +514,7 @@ export default function Hospital_TokenGenerator() {
           doctorName: (doctors.find(d=>String(d.id)===String(form.doctor))?.name) || '-',
           patientName: res?.token?.patientName || form.patientName || '-',
           phone: form.phone || '',
-          mrn: form.mrNumber || '',
+          mrn: (res?.token?.mrn || form.mrNumber || ''),
           age: form.age || '',
           gender: form.gender || '',
           guardianRel: form.guardianRel || '',
@@ -635,7 +579,7 @@ export default function Hospital_TokenGenerator() {
         doctorName: selDoc?.name || '-',
         patientName: res?.token?.patientName || form.patientName || '-',
         phone: form.phone || '',
-        mrn: form.mrNumber || '',
+        mrn: (res?.token?.mrn || form.mrNumber || ''),
         age: form.age || '',
         gender: form.gender || '',
         guardianRel: form.guardianRel || '',
@@ -658,61 +602,6 @@ export default function Hospital_TokenGenerator() {
 
   return (
     <div>
-      {drawerOpenDlg && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-xl">
-            <h4 className="mb-3 text-base font-semibold text-slate-800">Open Cash Drawer</h4>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Opening Cash (float)</label>
-            <input
-              className="mb-4 w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200"
-              placeholder="0"
-              inputMode="decimal"
-              value={drawerOpeningFloat}
-              onChange={e=>setDrawerOpeningFloat(e.target.value)}
-            />
-            <div className="flex items-center justify-end gap-2">
-              <button type="button" onClick={()=>setDrawerOpenDlg(false)} className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-slate-700">Cancel</button>
-              <button type="button" onClick={confirmOpenDrawer} className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-emerald-700">Open</button>
-            </div>
-          </div>
-        </div>
-      )}
-      {drawerCloseDlg && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-xl">
-            <h4 className="mb-3 text-base font-semibold text-slate-800">Close Cash Drawer</h4>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Counted Cash</label>
-            <input
-              className="mb-4 w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
-              placeholder="0"
-              inputMode="decimal"
-              value={drawerCountedCash}
-              onChange={e=>setDrawerCountedCash(e.target.value)}
-            />
-            <div className="flex items-center justify-end gap-2">
-              <button type="button" onClick={()=>setDrawerCloseDlg(false)} className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-slate-700">Cancel</button>
-              <button type="button" onClick={confirmCloseDrawer} className="rounded-md border border-violet-300 bg-violet-50 px-3 py-1.5 text-violet-700">Close</button>
-            </div>
-          </div>
-        </div>
-      )}
-      <div className="mb-3 flex items-center justify-between rounded-md border border-slate-200 bg-white p-3 text-sm">
-        <div>
-          <div className="text-slate-600">Cash Drawer</div>
-          <div className="text-slate-900 font-medium">{cashSession? `Open • Started ${String(cashSession.createdAt||'').replace('T',' ').slice(0,19)}` : 'Closed'}</div>
-        </div>
-        <div className="flex items-center gap-2">
-          {!cashSession && (
-            <button type="button" onClick={openCashDrawer} className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-emerald-700">Open</button>
-          )}
-          {!!cashSession && (
-            <button type="button" onClick={closeCashDrawer} className="rounded-md border border-violet-300 bg-violet-50 px-3 py-1.5 text-violet-700">Close</button>
-          )}
-          {!cashSession && !hasHospitalToken && (
-            <a href="/hospital/login" className="text-xs text-slate-500 underline">Login required</a>
-          )}
-        </div>
-      </div>
       <h2 className="text-xl font-semibold text-slate-800">Token Generator</h2>
       <form onSubmit={generateToken} className="mt-6 space-y-8">
         <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">

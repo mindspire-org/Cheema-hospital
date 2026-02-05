@@ -5,6 +5,7 @@ import * as InventoryItems from '../controllers/inventory_items.controller'
 import * as Staff from '../controllers/staff.controller'
 import * as Shifts from '../controllers/shifts.controller'
 import * as Attendance from '../controllers/attendance.controller'
+import * as StaffEarnings from '../controllers/staff_earnings.controller'
 import * as Expenses from '../controllers/expenses.controller'
 import * as Users from '../controllers/users.controller'
 import * as Audit from '../controllers/audit.controller'
@@ -72,6 +73,12 @@ r.delete('/shifts/:id', Shifts.remove)
 // Attendance
 r.get('/attendance', Attendance.list)
 r.post('/attendance', Attendance.upsert)
+
+// Staff Earnings
+r.get('/staff-earnings', StaffEarnings.list)
+r.post('/staff-earnings', StaffEarnings.create)
+r.put('/staff-earnings/:id', StaffEarnings.update)
+r.delete('/staff-earnings/:id', StaffEarnings.remove)
 
 // Expenses
 r.get('/expenses', Expenses.list)

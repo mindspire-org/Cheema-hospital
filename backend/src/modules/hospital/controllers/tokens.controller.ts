@@ -9,13 +9,12 @@ import { HospitalDoctorSchedule } from '../models/DoctorSchedule'
 import { HospitalAppointment } from '../models/Appointment'
 import { LabPatient } from '../../lab/models/Patient'
 import { CorporateCompany } from '../../corporate/models/Company'
-import { LabCounter } from '../../lab/models/Counter'
+import { nextGlobalMrn } from '../../../common/mrn'
 import { HospitalAuditLog } from '../models/AuditLog'
 import { postOpdTokenJournal, reverseJournalByRef } from './finance_ledger'
 import { HospitalCashSession } from '../models/CashSession'
 import { resolveOPDPrice } from '../../corporate/utils/price'
 import { CorporateTransaction } from '../../corporate/models/Transaction'
-import { HospitalSettings } from '../models/Settings'
 
 function resolveOPDFee({ department, doctor, visitType }: any){
   const isFollowup = visitType === 'followup'
@@ -51,44 +50,6 @@ function computeSlotIndex(startTime: string, endTime: string, slotMinutes: numbe
 function computeSlotStartEnd(startTime: string, slotMinutes: number, slotNo: number){
   const start = toMin(startTime) + (slotNo-1)*(slotMinutes||15)
   return { start: fromMin(start), end: fromMin(start + (slotMinutes||15)) }
-}
-
-async function nextMrn(){
-  const now = new Date()
-  const year = now.getFullYear()
-  const yy = String(year).slice(-2)
-  const mm = String(now.getMonth()+1).padStart(2,'0')
-  const yymm = yy+mm
-  const key = `lab_mrn_${yymm}`
-  const c = await LabCounter.findByIdAndUpdate(key, { $inc: { seq: 1 } }, { upsert: true, new: true, setDefaultsOnInsert: true })
-  const seqNum = Number((c as any)?.seq || 1)
-
-  let fmt = ''
-  let hospCode = ''
-  try {
-    const s: any = await HospitalSettings.findOne().lean()
-    fmt = String(s?.mrFormat || '').trim()
-    hospCode = String(s?.code || '').trim()
-  } catch {}
-
-  if (fmt) {
-    const widthMatch = fmt.match(/\{SERIAL(\d+)\}/i)
-    const width = widthMatch ? Math.max(1, parseInt(widthMatch[1], 10) || 6) : 6
-    const serial = String(seqNum).padStart(width, '0')
-    let out = fmt
-    out = out.replace(/\{HOSP\}/gi, hospCode || 'HOSP')
-    out = out.replace(/\{DEPT\}/gi, 'OPD')
-    out = out.replace(/\{YEAR\}/gi, String(year))
-    out = out.replace(/\{YYYY\}/gi, String(year))
-    out = out.replace(/\{YY\}/gi, yy)
-    out = out.replace(/\{MONTH\}/gi, mm)
-    out = out.replace(/\{MM\}/gi, mm)
-    out = out.replace(/\{SERIAL\d*\}/gi, serial)
-    return out
-  }
-
-  const seq = String(seqNum).padStart(6,'0')
-  return `MR-${yymm}-${seq}`
 }
 
 export async function createOpd(req: Request, res: Response){
@@ -132,7 +93,7 @@ export async function createOpd(req: Request, res: Response){
     if (Object.keys(patch).length){ patient = await LabPatient.findByIdAndUpdate(patient._id, { $set: patch }, { new: true }) }
   } else {
     if (!data.patientName) return res.status(400).json({ error: 'patientName or patientId/mrn required' })
-    const mrn = await nextMrn()
+    const mrn = await nextGlobalMrn()
     patient = await LabPatient.create({
       mrn,
       fullName: data.patientName,

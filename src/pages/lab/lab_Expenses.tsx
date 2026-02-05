@@ -1,18 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Lab_AddExpense from '../../components/lab/lab_AddExpense'
 import { labApi } from '../../utils/api'
+import Lab_SalarySlipDialog from '../../components/lab/lab_SalarySlipDialog'
 
  type LabExpense = {
   id: string
   date: string
+  datetime?: string
   type: 'Rent' | 'Utilities' | 'Supplies' | 'Salaries' | 'Maintenance' | 'Other'
   note: string
   amount: number
+  createdBy?: string
 }
 
 export default function Lab_Expenses() {
   const [items, setItems] = useState<LabExpense[]>([])
   const [addOpen, setAddOpen] = useState(false)
+  const [slipOpen, setSlipOpen] = useState(false)
+  const [slipExp, setSlipExp] = useState<LabExpense | null>(null)
 
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
@@ -35,7 +40,7 @@ export default function Lab_Expenses() {
       try {
         const res = await labApi.listExpenses({ from: from || undefined, to: to || undefined, minAmount: minAmount || undefined, search: search || undefined, type: etype==='All Types'? undefined : etype, page, limit, })
         if (!mounted || my !== reqSeq.current) return
-        const list: LabExpense[] = (res.items||[]).map((x:any)=>({ id: x._id, date: x.date, type: x.type, note: x.note||'', amount: Number(x.amount||0) }))
+        const list: LabExpense[] = (res.items||[]).map((x:any)=>({ id: x._id, date: x.date, datetime: x.datetime, type: x.type, note: x.note||'', amount: Number(x.amount||0), createdBy: x.createdBy }))
         setItems(list)
         setTotal(Number(res.total || list.length || 0))
         setTotalPages(Number(res.totalPages || 1))
@@ -44,9 +49,25 @@ export default function Lab_Expenses() {
     return ()=>{ mounted = false }
   }, [from, to, etype, minAmount, search, page, limit, tick])
 
+  // Auto refresh on global event (e.g., after salary payment)
+  useEffect(()=>{
+    const onRefresh = () => setTick(t=>t+1)
+    try { window.addEventListener('lab:expenses:refresh', onRefresh as any) } catch {}
+    return () => { try { window.removeEventListener('lab:expenses:refresh', onRefresh as any) } catch {} }
+  }, [])
+
+  // Resolve current Lab username to stamp createdBy
+  const currentUser = useMemo(() => {
+    try {
+      const s = localStorage.getItem('lab.session')
+      if (s) { const u = JSON.parse(s); return (u?.username || u?.name || '').toString() }
+    } catch {}
+    return 'admin'
+  }, [])
+
   // Add via modal -> backend
-  const handleSave = async (exp: { date: string; type: LabExpense['type']; note: string; amount: number }) => {
-    try { await labApi.createExpense(exp) } catch (e) { console.error(e) }
+  const handleSave = async (exp: { date: string; time?: string; type: LabExpense['type']; note: string; amount: number }) => {
+    try { await labApi.createExpense({ ...exp, createdBy: currentUser }) } catch (e) { console.error(e) }
     setTick(t=>t+1)
   }
 
@@ -83,7 +104,7 @@ export default function Lab_Expenses() {
           limit: limitFetch,
         })
         const items = res?.items || []
-        const mapped: LabExpense[] = items.map((x: any) => ({ id: x._id, date: x.date, type: x.type, note: x.note || '', amount: Number(x.amount || 0) }))
+        const mapped: LabExpense[] = items.map((x: any) => ({ id: x._id, date: x.date, datetime: x.datetime, type: x.type, note: x.note || '', amount: Number(x.amount || 0) }))
         all.push(...mapped)
         const totalPages = Number(res?.totalPages || 1)
         if (p >= totalPages || items.length === 0) break
@@ -101,8 +122,15 @@ export default function Lab_Expenses() {
       return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
     }
     const data = await loadAllForExport().then(r => r.length ? r : filtered).catch(() => filtered)
-    const header = ['Date','Type','Note','Amount'].map(escape).join(',')
-    const lines = data.map(e => [e.date, e.type, e.note, (e.amount ?? 0).toFixed(2)].map(escape).join(',')).join('\n')
+    const header = ['Date','Time','Amount','Note','Type','User'].map(escape).join(',')
+    const lines = data.map(e => [
+      e.date,
+      e.datetime ? new Date(e.datetime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
+      (e.amount ?? 0).toFixed(2),
+      e.note,
+      e.type,
+      e.createdBy || ''
+    ].map(escape).join(',')).join('\n')
     const csv = header + '\n' + lines
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
@@ -131,10 +159,12 @@ export default function Lab_Expenses() {
     const pageH = doc.internal.pageSize.getHeight()
     doc.setFont('courier', 'normal')
     const cols = [
-      { key: 'date', title: 'Date', width: 36 },
-      { key: 'type', title: 'Type', width: 36 },
-      { key: 'note', title: 'Note', width: 160 },
-      { key: 'amount', title: 'Amount', width: 32 },
+      { key: 'date', title: 'Date', width: 32 },
+      { key: 'time', title: 'Time', width: 24 },
+      { key: 'amount', title: 'Amount', width: 30 },
+      { key: 'note', title: 'Note', width: 120 },
+      { key: 'type', title: 'Type', width: 30 },
+      { key: 'user', title: 'User', width: 36 },
     ] as const
     const drawHeader = (y: number) => {
       doc.setFontSize(12)
@@ -152,7 +182,8 @@ export default function Lab_Expenses() {
     doc.setFontSize(8)
     const dataRows: LabExpense[] = await loadAllForExport().then(r => r.length ? r : filtered).catch(() => filtered)
     for (const e of dataRows) {
-      const data = [e.date, e.type, e.note, `Rs ${(e.amount ?? 0).toFixed(2)}`]
+      const timeStr = e.datetime ? new Date(e.datetime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
+      const data = [e.date, timeStr, `Rs ${(e.amount ?? 0).toFixed(2)}`, e.note, e.type, e.createdBy || '']
       const lines = data.map((v, i) => (doc as any).splitTextToSize(v, cols[i].width - 2)) as string[][]
       const maxLines = Math.max(1, ...lines.map(a => a.length))
       if (y + maxLines * 4 + 6 > pageH - margin) {
@@ -232,23 +263,45 @@ export default function Lab_Expenses() {
             <button onClick={exportPDF} className="rounded-md border border-slate-200 px-3 py-1.5 text-sm hover:bg-slate-50">Download PDF</button>
           </div>
         </div>
-        <div className="space-y-2">
-          {filtered.map(e => (
-            <div key={e.id} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-3">
-              <div className="flex items-center gap-3">
-                <div className="rounded-md bg-slate-100 px-2 py-1 text-xs">{e.type}</div>
-                <div className="text-slate-700">{e.date}</div>
-                <div className="text-slate-500 text-sm">{e.note}</div>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="font-semibold text-slate-800">PKR {e.amount.toLocaleString()}</div>
-                <button type="button" onClick={()=>requestDelete(e.id)} className="rounded-md bg-rose-600 px-2 py-1 text-xs text-white hover:bg-rose-700">Delete</button>
-              </div>
-            </div>
-          ))}
-          {filtered.length === 0 && (
-            <div className="rounded-lg border border-dashed border-slate-200 p-6 text-center text-slate-500">No expenses found</div>
-          )}
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-left text-sm">
+            <thead className="bg-slate-50 text-slate-700">
+              <tr>
+                <th className="px-4 py-2 font-medium">Date</th>
+                <th className="px-4 py-2 font-medium">Time</th>
+                <th className="px-4 py-2 font-medium">Amount</th>
+                <th className="px-4 py-2 font-medium">Note</th>
+                <th className="px-4 py-2 font-medium">Type</th>
+                <th className="px-4 py-2 font-medium">User</th>
+                <th className="px-4 py-2 font-medium"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 text-slate-700">
+              {filtered.map(e => (
+                <tr key={e.id}>
+                  <td className="px-4 py-2">{e.date}</td>
+                  <td className="px-4 py-2">{e.datetime ? new Date(e.datetime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</td>
+                  <td className="px-4 py-2 font-semibold">PKR {e.amount.toLocaleString()}</td>
+                  <td className="px-4 py-2">{e.note}</td>
+                  <td className="px-4 py-2">{e.type}</td>
+                  <td className="px-4 py-2">{e.createdBy || ''}</td>
+                  <td className="px-4 py-2 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      {e.type === 'Salaries' && (
+                        <button type="button" onClick={()=>{ setSlipExp(e); setSlipOpen(true) }} className="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50">Slip</button>
+                      )}
+                      <button type="button" onClick={()=>requestDelete(e.id)} className="rounded-md bg-rose-600 px-2 py-1 text-xs text-white hover:bg-rose-700">Delete</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-12 text-center text-slate-500">No expenses found</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
         <div className="mt-3 flex items-center justify-between border-t border-slate-200 px-1 py-3 text-sm text-slate-600">
           <div>
@@ -266,6 +319,8 @@ export default function Lab_Expenses() {
 
       {/* Add Expense Modal */}
       <Lab_AddExpense open={addOpen} onClose={() => setAddOpen(false)} onSave={handleSave} />
+
+      <Lab_SalarySlipDialog open={slipOpen} onClose={()=>{ setSlipOpen(false); setSlipExp(null) }} expense={slipExp} />
 
       {deleteOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" role="dialog" aria-modal="true">

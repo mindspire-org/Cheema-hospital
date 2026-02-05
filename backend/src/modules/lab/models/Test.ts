@@ -15,6 +15,7 @@ const TestSchema = new Schema({
     normalRangeFemale: { type: String },
     normalRangePediatric: { type: String },
   }, { _id: false })], default: [] },
+  consumables: { type: [new Schema({ item: { type: String, required: true }, qty: { type: Number, required: true } }, { _id: false })], default: [] },
 }, { timestamps: true })
 
 export type LabTestDoc = {
@@ -27,6 +28,7 @@ export type LabTestDoc = {
   normalRangeFemale?: string
   normalRangePediatric?: string
   parameters?: Array<{ name: string; unit?: string; normalRangeMale?: string; normalRangeFemale?: string; normalRangePediatric?: string }>
+  consumables?: Array<{ item: string; qty: number }>
 }
 
 export const LabTest = models.Lab_Test || model('Lab_Test', TestSchema)

@@ -9,6 +9,7 @@ export default function Aesthetic_ProceduresPage(){
   const [totalPages, setTotalPages] = useState(1)
   const [list, setList] = useState<any[]>([])
   const [edit, setEdit] = useState<null | { _id?: string; name: string; basePrice?: string }>(null)
+  const [tick, setTick] = useState(0)
 
   useEffect(()=>{
     let mounted = true
@@ -24,7 +25,7 @@ export default function Aesthetic_ProceduresPage(){
       }
     })()
     return ()=>{ mounted = false }
-  }, [q, page, limit])
+  }, [q, page, limit, tick])
 
   const save = async () => {
     if (!edit) return
@@ -33,12 +34,12 @@ export default function Aesthetic_ProceduresPage(){
     else await aestheticApi.updateProcedureCatalog(edit._id, payload)
     setEdit(null)
     setPage(1)
-    setQ(q=>q)
+    setTick(t=>t+1)
   }
-  const remove = async (id: string) => { await aestheticApi.deleteProcedureCatalog(id); setPage(1); setQ(q=>q) }
+  const remove = async (id: string) => { await aestheticApi.deleteProcedureCatalog(id); setPage(1); setTick(t=>t+1) }
 
   return (
-    <div className="max-w-5xl mx-auto space-y-4">
+    <div className="w-full space-y-4">
       <div className="flex items-center justify-between">
         <div className="text-lg font-semibold">Procedure Catalog</div>
         <div className="flex items-center gap-2">

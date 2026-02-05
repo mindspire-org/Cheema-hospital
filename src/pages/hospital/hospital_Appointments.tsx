@@ -1,22 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { hospitalApi, financeApi } from '../../utils/api'
+import { hospitalApi } from '../../utils/api'
 
 function todayIso(){ return new Date().toISOString().slice(0,10) }
 
-function SummaryCard({ title, amount, tone }: { title: string; amount: number; tone: 'emerald'|'sky'|'violet'|'amber' }){
-  const toneMap: any = {
-    emerald: 'text-emerald-700 bg-emerald-50',
-    sky: 'text-sky-700 bg-sky-50',
-    violet: 'text-violet-700 bg-violet-50',
-    amber: 'text-amber-700 bg-amber-50',
-  }
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
-      <div className="text-sm text-slate-600">{title}</div>
-      <div className={`mt-1 text-xl font-semibold ${toneMap[tone]||''} inline-block rounded px-2 py-1`}>Rs {Number(amount||0).toFixed(2)}</div>
-    </div>
-  )
-}
+ 
 function toMin(hhmm: string){ const [h,m] = (hhmm||'').split(':').map(x=>parseInt(x,10)||0); return h*60+m }
 function fromMin(min: number){ const h = Math.floor(min/60).toString().padStart(2,'0'); const m = (min%60).toString().padStart(2,'0'); return `${h}:${m}` }
 
@@ -39,6 +26,16 @@ export default function Hospital_Appointments(){
   const [apptMap, setApptMap] = useState<Record<string, any[]>>({})
   const [tokenMap, setTokenMap] = useState<Record<string, number[]>>({})
 
+  // Book Appointment dialog
+
+  // Server-side pagination state for the appointments list
+  const [tblPage, setTblPage] = useState(1)
+  const [tblLimit, setTblLimit] = useState(10)
+  const [tblTotalPages, setTblTotalPages] = useState(1)
+  const [tblTotal, setTblTotal] = useState(0)
+  const [tblLoading, setTblLoading] = useState(false)
+  const [apptRows, setApptRows] = useState<any[]>([])
+
   // Phone suggestions (incremental, like Token Generator)
   const phoneRef = useRef<HTMLInputElement>(null)
   const nameRef = useRef<HTMLInputElement>(null)
@@ -59,40 +56,14 @@ export default function Hospital_Appointments(){
   useEffect(()=>{ (async()=>{
     try{
       const res: any = await hospitalApi.listDoctors()
-      const list = (res?.doctors||[]).map((d: any)=>({ id: String(d._id), name: d.name }))
+      const list = (res?.doctors||[]).map((d: any)=>({ id: String(d._id || d.id), name: d.name }))
       setDoctors(list)
     }catch{}
   })() }, [])
 
   useEffect(()=>{ if (doctorId && dateIso) loadSchedules() }, [doctorId, dateIso])
+  useEffect(()=>{ loadApptTable() }, [doctorId, dateIso, tblPage, tblLimit])
 
-  // Doctor payable widgets (summary & balance)
-  const [docBalance, setDocBalance] = useState<number | null>(null)
-  const [docSummary, setDocSummary] = useState<{ opd: number; ipd: number; procedure: number; payouts: number; net: number }>({ opd: 0, ipd: 0, procedure: 0, payouts: 0, net: 0 })
-  useEffect(()=>{
-    let cancelled = false
-    async function load(){
-      if (!doctorId){ setDocBalance(null); setDocSummary({ opd:0, ipd:0, procedure:0, payouts:0, net:0 }); return }
-      try{ const b: any = await financeApi.doctorBalance(doctorId); if(!cancelled) setDocBalance(Number(b?.payable||0)) }catch{ if(!cancelled) setDocBalance(null) }
-      try{
-        const e: any = await financeApi.doctorEarnings({ doctorId, from: dateIso, to: dateIso })
-        const items: any[] = Array.isArray(e?.earnings) ? e.earnings : []
-        let opd=0, ipd=0, procedure=0, payouts=0
-        for (const r of items){
-          const t = String(r.type||'').toLowerCase()
-          const amt = Number(r.amount||0)
-          if (t==='opd') opd += amt
-          else if (t==='ipd' || t.startsWith('ipd')) ipd += amt
-          else if (t.startsWith('proc')) procedure += amt
-          else if (t==='payout') payouts += amt
-        }
-        const net = opd + ipd + procedure + payouts
-        if (!cancelled) setDocSummary({ opd, ipd, procedure, payouts, net })
-      } catch { if (!cancelled) setDocSummary({ opd:0, ipd:0, procedure:0, payouts:0, net:0 }) }
-    }
-    load()
-    return ()=>{ cancelled = true }
-  }, [doctorId, dateIso])
 
   async function loadSchedules(){
     setLoading(true)
@@ -102,6 +73,7 @@ export default function Hospital_Appointments(){
       const res: any = await hospitalApi.listDoctorSchedules({ doctorId, date: dateIso })
       const rows: any[] = res?.schedules || []
       setSchedules(rows)
+      if (rows.length && !selectedScheduleId) setSelectedScheduleId(String(rows[0]._id))
       // For each schedule, load appointments and tokens
       const apptMapLocal: Record<string, any[]> = {}
       const tokenMapLocal: Record<string, number[]> = {}
@@ -117,8 +89,54 @@ export default function Hospital_Appointments(){
       }
       setApptMap(apptMapLocal)
       setTokenMap(tokenMapLocal)
-    }catch{ setSchedules([]) }
+    }catch{
+      // Fallback: some backends 500 on invalid doctorId filter; retry without doctorId then filter client-side
+      try {
+        const resAll: any = await hospitalApi.listDoctorSchedules({ date: dateIso })
+        const allRows: any[] = resAll?.schedules || []
+        const rows = doctorId ? allRows.filter((r:any)=> String(r.doctorId||'') === String(doctorId)) : allRows
+        setSchedules(rows)
+        if (rows.length && !selectedScheduleId) setSelectedScheduleId(String(rows[0]._id))
+        const apptMapLocal: Record<string, any[]> = {}
+        const tokenMapLocal: Record<string, number[]> = {}
+        for (const s of rows){
+          try {
+            const [ap, tk]: any = await Promise.all([
+              hospitalApi.listAppointments({ scheduleId: String(s._id) }),
+              hospitalApi.listTokens({ scheduleId: String(s._id) }),
+            ])
+            apptMapLocal[String(s._id)] = (ap?.appointments || [])
+            tokenMapLocal[String(s._id)] = (tk?.tokens || []).map((t: any)=> Number(t.slotNo||0)).filter(Boolean)
+          } catch {}
+        }
+        setApptMap(apptMapLocal)
+        setTokenMap(tokenMapLocal)
+      } catch {
+        setSchedules([])
+      }
+    }
     setLoading(false)
+  }
+
+  async function loadApptTable(){
+    if (!dateIso){ setApptRows([]); setTblTotal(0); setTblTotalPages(1); return }
+    setTblLoading(true)
+    try{
+      // Do not send page/limit until backend supports it; paginate on client
+      const params: any = { date: dateIso }
+      if (doctorId) params.doctorId = doctorId
+      const res: any = await hospitalApi.listAppointments(params)
+      const arr: any[] = (res?.items ?? res?.appointments ?? (Array.isArray(res)? res : [])) as any[]
+      const total = arr.length
+      setTblTotal(total)
+      const tp = Math.max(1, Math.ceil(total/Math.max(1,tblLimit)))
+      setTblTotalPages(tp)
+      const start = Math.max(0,(tblPage-1)*tblLimit)
+      setApptRows(arr.slice(start, start+tblLimit))
+    } catch(e){
+      setApptRows([]); setTblTotal(0); setTblTotalPages(1)
+    }
+    setTblLoading(false)
   }
 
   const slotsBySchedule = useMemo(()=>{
@@ -222,12 +240,13 @@ export default function Hospital_Appointments(){
       setSelectedPatient(null)
       setNewPat({ name: '', phone: '', gender: '', age: '', notes: '' })
       await loadSchedules()
+      await loadApptTable()
     }catch(e:any){ setError(e?.message || 'Failed to book appointment') }
     setBooking(false)
   }
 
   async function updateStatus(id: string, status: 'booked'|'confirmed'|'checked-in'|'cancelled'|'no-show'){
-    try{ await hospitalApi.updateAppointmentStatus(id, status as any); await loadSchedules() } catch(e:any){ setError(e?.message||'Failed to update status') }
+    try{ await hospitalApi.updateAppointmentStatus(id, status as any); await loadSchedules(); await loadApptTable() } catch(e:any){ setError(e?.message||'Failed to update status') }
   }
 
   async function convert(id: string){
@@ -236,7 +255,7 @@ export default function Hospital_Appointments(){
       const res: any = await hospitalApi.convertAppointmentToToken(id)
       const tok = res?.token
       if (tok && tok.tokenNo){ setInfo(`Converted to Token #${tok.tokenNo}`) }
-      await loadSchedules()
+      await loadSchedules(); await loadApptTable()
     }catch(e:any){ setError(e?.message||'Failed to convert to token') }
   }
 
@@ -262,17 +281,8 @@ export default function Hospital_Appointments(){
           <div className="md:col-span-3 flex items-end justify-end text-sm text-slate-600">{loading? 'Loading schedules...' : `${schedules.length} schedule(s)`}</div>
         </div>
       </div>
+      
 
-      {doctorId && (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <SummaryCard title="OPD Earnings (day)" amount={docSummary.opd} tone="emerald" />
-          <SummaryCard title="IPD Earnings (day)" amount={docSummary.ipd} tone="sky" />
-          <SummaryCard title="Procedure Earnings (day)" amount={docSummary.procedure} tone="violet" />
-          <SummaryCard title="Paid to Doctor (day)" amount={docSummary.payouts} tone="amber" />
-          <SummaryCard title="Net Due (day)" amount={docSummary.net} tone="amber" />
-          {docBalance!=null && <SummaryCard title="Doctor Payable Balance" amount={docBalance} tone={docBalance>=0? 'amber':'emerald'} />}
-        </div>
-      )}
 
       {error && <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-rose-700 text-sm">{error}</div>}
       {info && <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-emerald-700 text-sm">{info}</div>}
@@ -302,8 +312,8 @@ export default function Hospital_Appointments(){
                               : 'border-slate-300 bg-white text-slate-800'
                     return (
                       <button key={sl.slotNo}
-                        disabled={!isSel || taken}
-                        onClick={()=> setSelectedSlotNo(sl.slotNo)}
+                        disabled={taken}
+                        onClick={()=> { setSelectedScheduleId(String(s._id)); setSelectedSlotNo(sl.slotNo) }}
                         className={`rounded-md border px-2 py-2 text-xs text-left ${cls}`}
                         title={taken ? (sl.status==='token' ? 'Taken (Token)' : 'Taken (Appointment)') : 'Available'}
                       >
@@ -324,82 +334,83 @@ export default function Hospital_Appointments(){
         )}
       </div>
 
-      {/* Patient Information (Token Generator-like) */}
+      {/* Book Appointment Dialog */}
       <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <h3 className="mb-3 text-sm font-semibold text-slate-700">Patient Information</h3>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <div className="md:col-span-2">
-            <label className="mb-1 block text-sm font-medium text-slate-700">Phone</label>
-            <div ref={phoneSuggestWrapRef} className="relative">
-              <input
-                className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
-                placeholder="Type phone to search"
-                value={newPat.phone}
-                onChange={onPhoneChange}
-                onFocus={()=>{ if (phoneSuggestItems.length>0) setPhoneSuggestOpen(true) }}
-                ref={phoneRef}
-              />
-              {phoneSuggestOpen && (
-                <div className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg">
-                  {phoneSuggestItems.length === 0 ? (
-                    <div className="px-3 py-2 text-sm text-slate-500">No results</div>
-                  ) : (
-                    phoneSuggestItems.map((p:any, idx:number) => (
-                      <button
-                        type="button"
-                        key={p._id || idx}
-                        onClick={() => selectPhoneSuggestion(p)}
-                        className="flex w-full flex-col items-start px-3 py-2 text-left hover:bg-slate-50"
-                      >
-                        <div className="text-sm font-medium text-slate-800">{p.fullName || 'Unnamed'} <span className="text-xs text-slate-500">{p.mrn || '-'}</span></div>
-                        <div className="text-xs text-slate-600">{p.phoneNormalized || ''} • Age: {p.age || '-'} • {p.gender || '-'}</div>
-                        {p.address && <div className="text-xs text-slate-500 truncate">{p.address}</div>}
-                      </button>
-                    ))
-                  )}
-                </div>
-              )}
+          <h3 className="mb-3 text-sm font-semibold text-slate-700">Patient Information</h3>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="md:col-span-2">
+              <label className="mb-1 block text-sm font-medium text-slate-700">Phone</label>
+              <div ref={phoneSuggestWrapRef} className="relative">
+                <input
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+                  placeholder="Type phone to search"
+                  value={newPat.phone}
+                  onChange={onPhoneChange}
+                  onFocus={()=>{ if (phoneSuggestItems.length>0) setPhoneSuggestOpen(true) }}
+                  ref={phoneRef}
+                />
+                {phoneSuggestOpen && (
+                  <div className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg">
+                    {phoneSuggestItems.length === 0 ? (
+                      <div className="px-3 py-2 text-sm text-slate-500">No results</div>
+                    ) : (
+                      phoneSuggestItems.map((p:any, idx:number) => (
+                        <button
+                          type="button"
+                          key={p._id || idx}
+                          onClick={() => selectPhoneSuggestion(p)}
+                          className="flex w-full flex-col items-start px-3 py-2 text-left hover:bg-slate-50"
+                        >
+                          <div className="text-sm font-medium text-slate-800">{p.fullName || 'Unnamed'} <span className="text-xs text-slate-500">{p.mrn || '-'}</span></div>
+                          <div className="text-xs text-slate-600">{p.phoneNormalized || ''} • Age: {p.age || '-'} • {p.gender || '-'}</div>
+                          {p.address && <div className="text-xs text-slate-500 truncate">{p.address}</div>}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">MR Number</label>
+              <input className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" placeholder="Enter MR# (e.g., MR-15)" onKeyDown={onMrnKeyDown} />
+            </div>
+            <div className="md:col-span-2">
+              <label className="mb-1 block text-sm font-medium text-slate-700">Patient Name</label>
+              <input className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" placeholder="Full Name" value={newPat.name} onChange={e=>setNewPat(v=>({ ...v, name: e.target.value }))} ref={nameRef} />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Age</label>
+              <input className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" placeholder="e.g., 25" value={newPat.age} onChange={e=>setNewPat(v=>({ ...v, age: e.target.value }))} />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Gender</label>
+              <select className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" value={newPat.gender} onChange={e=>setNewPat(v=>({ ...v, gender: e.target.value }))}>
+                <option value="">Select gender</option>
+                <option>Male</option>
+                <option>Female</option>
+                <option>Other</option>
+              </select>
+            </div>
+            <div className="md:col-span-3">
+              <label className="mb-1 block text-sm font-medium text-slate-700">Notes (optional)</label>
+              <input className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" placeholder="Any notes for the doctor" value={newPat.notes} onChange={e=>setNewPat(v=>({ ...v, notes: e.target.value }))} />
+            </div>
+            {selectedPatient && (
+              <div className="md:col-span-3 text-xs text-emerald-700">Selected existing patient: {selectedPatient.fullName || '-'} — MRN {selectedPatient.mrn || '-'} <button onClick={()=>setSelectedPatient(null)} className="ml-2 rounded border border-slate-300 px-2 py-0.5 text-[11px]">Clear</button></div>
+            )}
+            <div className="md:col-span-3 flex items-center justify-end gap-2">
+              <button onClick={()=>{ setSelectedPatient(null); setNewPat({ name: '', phone: '', gender: '', age: '', notes: '' }); setPhoneSuggestOpen(false) }} className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700">Cancel</button>
+              <button onClick={book} disabled={booking} className="rounded-md bg-violet-700 px-3 py-2 text-sm font-medium text-white">{booking? 'Booking...' : 'Confirm Booking'}</button>
             </div>
           </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">MR Number</label>
-            <input className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" placeholder="Enter MR# (e.g., MR-15)" onKeyDown={onMrnKeyDown} />
-          </div>
-          <div className="md:col-span-2">
-            <label className="mb-1 block text-sm font-medium text-slate-700">Patient Name</label>
-            <input className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" placeholder="Full Name" value={newPat.name} onChange={e=>setNewPat(v=>({ ...v, name: e.target.value }))} ref={nameRef} />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Age</label>
-            <input className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" placeholder="e.g., 25" value={newPat.age} onChange={e=>setNewPat(v=>({ ...v, age: e.target.value }))} />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Gender</label>
-            <select className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" value={newPat.gender} onChange={e=>setNewPat(v=>({ ...v, gender: e.target.value }))}>
-              <option value="">Select gender</option>
-              <option>Male</option>
-              <option>Female</option>
-              <option>Other</option>
-            </select>
-          </div>
-          <div className="md:col-span-3">
-            <label className="mb-1 block text-sm font-medium text-slate-700">Notes (optional)</label>
-            <input className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" placeholder="Any notes for the doctor" value={newPat.notes} onChange={e=>setNewPat(v=>({ ...v, notes: e.target.value }))} />
-          </div>
-          {selectedPatient && (
-            <div className="md:col-span-3 text-xs text-emerald-700">Selected existing patient: {selectedPatient.fullName || '-'} — MRN {selectedPatient.mrn || '-'} <button onClick={()=>setSelectedPatient(null)} className="ml-2 rounded border border-slate-300 px-2 py-0.5 text-[11px]">Clear</button></div>
-          )}
-          <div className="md:col-span-3 flex items-center justify-end gap-2">
-            <button onClick={book} disabled={booking} className="rounded-md bg-violet-700 px-3 py-2 text-sm font-medium text-white">{booking? 'Booking...' : 'Book Appointment'}</button>
-          </div>
-        </div>
       </div>
 
       {/* Appointments list */}
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 text-sm">
           <div className="font-medium text-slate-800">Appointments on {dateIso || '-'}{doctorId? ' — '+(doctors.find(d=>d.id===doctorId)?.name||doctorId) : ''}</div>
-          <div className="text-slate-600">{Object.values(apptMap).flat().filter(a=>String(a.dateIso||'')===dateIso && (!doctorId || String(a.doctorId||'')===doctorId)).length} item(s)</div>
+          <div className="text-slate-600">{tblLoading? 'Loading...' : `${tblTotal} item(s)`}</div>
         </div>
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50 text-slate-600">
@@ -412,35 +423,58 @@ export default function Hospital_Appointments(){
             </tr>
           </thead>
           <tbody>
-            {schedules.flatMap(s => (apptMap[String(s._id)]||[]).filter(a=>String(a.dateIso||'')===dateIso).map(a=>({ appt: a, sched: s }))).sort((a,b)=> Number(a.appt.slotNo||0)-Number(b.appt.slotNo||0)).map(({ appt, sched }) => (
-              <tr key={String(appt._id)} className="border-b border-slate-100">
-                <td className="px-3 py-2 whitespace-nowrap">{appt.slotStart || fromMin(toMin(sched.startTime)+(Number(appt.slotNo||1)-1)*Math.max(5, Number(sched.slotMinutes||15)))} - {appt.slotEnd || ''}</td>
-                <td className="px-3 py-2">{appt.patientName || appt.mrn || '—'}</td>
-                <td className="px-3 py-2">{appt.phoneNormalized || '-'}</td>
-                <td className="px-3 py-2">{appt.status}</td>
-                <td className="px-3 py-2">
-                  <div className="flex items-center gap-2">
-                    {!appt.tokenId && (
-                      <button onClick={()=>convert(String(appt._id))} className="rounded-md border border-violet-300 bg-violet-50 px-2 py-1 text-xs text-violet-700">Convert to Token</button>
-                    )}
-                    {appt.status !== 'confirmed' && appt.status !== 'checked-in' && appt.status !== 'cancelled' && (
-                      <button onClick={()=>updateStatus(String(appt._id), 'confirmed')} className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs text-emerald-700">Confirm</button>
-                    )}
-                    {appt.status !== 'cancelled' && (
-                      <button onClick={()=>updateStatus(String(appt._id), 'cancelled')} className="rounded-md border border-rose-300 bg-rose-50 px-2 py-1 text-xs text-rose-700">Cancel</button>
-                    )}
-                    {appt.status !== 'checked-in' && appt.status !== 'cancelled' && (
-                      <button onClick={()=>updateStatus(String(appt._id), 'checked-in')} className="rounded-md border border-sky-300 bg-sky-50 px-2 py-1 text-xs text-sky-700">Check-in</button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {schedules.every(s => (apptMap[String(s._id)]||[]).filter(a=>String(a.dateIso||'')===dateIso).length===0) && (
+            {apptRows.map((appt:any) => {
+              const sched = schedules.find(s=> String(s._id)===String(appt.scheduleId))
+              const startStr = appt.slotStart || (sched ? fromMin(toMin(sched.startTime)+(Number(appt.slotNo||1)-1)*Math.max(5, Number(sched.slotMinutes||15))) : '-')
+              const endStr = appt.slotEnd || ''
+              return (
+                <tr key={String(appt._id)} className="border-b border-slate-100">
+                  <td className="px-3 py-2 whitespace-nowrap">{startStr} {endStr?`- ${endStr}`:''}</td>
+                  <td className="px-3 py-2">{appt.patientName || appt.mrn || '—'}</td>
+                  <td className="px-3 py-2">{appt.phoneNormalized || '-'}</td>
+                  <td className="px-3 py-2">{appt.status}</td>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      {!appt.tokenId && (
+                        <button onClick={()=>convert(String(appt._id))} className="rounded-md border border-violet-300 bg-violet-50 px-2 py-1 text-xs text-violet-700">Convert to Token</button>
+                      )}
+                      {appt.status !== 'confirmed' && appt.status !== 'checked-in' && appt.status !== 'cancelled' && (
+                        <button onClick={()=>updateStatus(String(appt._id), 'confirmed')} className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs text-emerald-700">Confirm</button>
+                      )}
+                      {appt.status !== 'cancelled' && (
+                        <button onClick={()=>updateStatus(String(appt._id), 'cancelled')} className="rounded-md border border-rose-300 bg-rose-50 px-2 py-1 text-xs text-rose-700">Cancel</button>
+                      )}
+                      {appt.status !== 'checked-in' && appt.status !== 'cancelled' && (
+                        <button onClick={()=>updateStatus(String(appt._id), 'checked-in')} className="rounded-md border border-sky-300 bg-sky-50 px-2 py-1 text-xs text-sky-700">Check-in</button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+            {!tblLoading && apptRows.length===0 && (
               <tr><td colSpan={5} className="px-4 py-6 text-center text-slate-500">No appointments</td></tr>
             )}
           </tbody>
         </table>
+        <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-sm text-slate-600">
+          <div>
+            {tblTotal > 0 ? (
+              <>Showing {Math.min((tblPage-1)*tblLimit + 1, tblTotal)}-{Math.min((tblPage-1)*tblLimit + apptRows.length, tblTotal)} of {tblTotal}</>
+            ) : 'No results'}
+          </div>
+          <div className="flex items-center gap-2">
+            <select value={tblLimit} onChange={e=>{ setTblLimit(parseInt(e.target.value)); setTblPage(1) }} className="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-700">
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+            <button disabled={tblLoading || tblPage<=1} onClick={()=>setTblPage(p=>Math.max(1,p-1))} className="rounded-md border border-slate-200 px-2 py-1 disabled:opacity-50">Prev</button>
+            <div>Page {tblPage} of {tblTotalPages}</div>
+            <button disabled={tblLoading || tblPage>=tblTotalPages} onClick={()=>setTblPage(p=>Math.min(tblTotalPages,p+1))} className="rounded-md border border-slate-200 px-2 py-1 disabled:opacity-50">Next</button>
+          </div>
+        </div>
       </div>
 
     </div>

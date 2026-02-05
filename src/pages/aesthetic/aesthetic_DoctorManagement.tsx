@@ -55,7 +55,7 @@ export default function Aesthetic_DoctorManagementPage(){
   }
 
   return (
-    <div className="max-w-5xl mx-auto space-y-4">
+    <div className="w-full space-y-4">
       <div className="flex items-center justify-between">
         <div className="text-lg font-semibold">Doctors</div>
         <div className="flex items-center gap-2">

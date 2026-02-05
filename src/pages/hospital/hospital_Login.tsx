@@ -55,11 +55,7 @@ export default function Hospital_Login() {
         return
       }
 
-      if (u?.role === 'Finance') {
-        localStorage.setItem('finance.session', JSON.stringify({ username: u.username, role: u.role }))
-        navigate('/finance')
-        return
-      }
+      // Finance users should use the dedicated Finance login and are no longer handled here.
 
       // Default: Hospital app users (Admin, Staff, and any other custom roles)
       localStorage.setItem('hospital.session', JSON.stringify({ username: u?.username, role: u?.role }))

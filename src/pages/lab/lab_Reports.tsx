@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { labApi } from '../../utils/api'
 
 export default function Lab_Reports() {
@@ -13,11 +13,29 @@ export default function Lab_Reports() {
   const [dailyRevenue, setDailyRevenue] = useState<Array<{ date: string; value: number }>>([])
   const [comparison, setComparison] = useState<Array<{ label: string; value: number }>>([])
   const [invStats, setInvStats] = useState<any>(null)
-  const [shiftDate, setShiftDate] = useState(iso(today))
   const [shifts, setShifts] = useState<Array<{ id: string; name: string; start: string; end: string }>>([])
-  const [shiftId, setShiftId] = useState('')
-  const [shiftLoading, setShiftLoading] = useState(false)
-  const [shiftCash, setShiftCash] = useState<{ revenue: number; inMov: number; outMov: number; expenses: number; net: number }>({ revenue: 0, inMov: 0, outMov: 0, expenses: 0, net: 0 })
+  const [filterShiftId, setFilterShiftId] = useState('')
+  const [fromTime, setFromTime] = useState('')
+  const [toTime, setToTime] = useState('')
+
+  // Compute effective window for global filters: time overrides shift; shift applies when single day
+  const effectiveWindow = useMemo(()=>{
+    try{
+      if (fromTime && toTime){
+        return { from: `${from}T${fromTime}:00`, to: `${to}T${toTime}:59` }
+      }
+      if (filterShiftId && from === to){
+        const sh = shifts.find(s=>s.id===filterShiftId)
+        const win = getShiftWindow(from, sh)
+        if (win){
+          const f = new Date(win.start.getTime() - (win.start.getTimezoneOffset()*60000)).toISOString().slice(0,19)
+          const t = new Date(win.end.getTime() - (win.end.getTimezoneOffset()*60000)).toISOString().slice(0,19)
+          return { from: f, to: t }
+        }
+      }
+    } catch {}
+    return { from, to }
+  }, [from, to, fromTime, toTime, filterShiftId, shifts])
 
   useEffect(()=>{
     let mounted = true
@@ -25,7 +43,7 @@ export default function Lab_Reports() {
       setLoading(true)
       try{
         const [res, inv]: any = await Promise.all([
-          labApi.reportsSummary({ from, to }),
+          labApi.reportsSummary({ from: effectiveWindow.from, to: effectiveWindow.to }),
           labApi.inventorySummary({ limit: 1 }),
         ])
         if (!mounted) return
@@ -37,7 +55,7 @@ export default function Lab_Reports() {
       finally { setLoading(false) }
     })()
     return ()=>{ mounted = false }
-  }, [tick])
+  }, [tick, effectiveWindow.from, effectiveWindow.to])
 
   const maxRev = Math.max(...dailyRevenue.map(d => d.value), 1)
   const maxComp = Math.max(...comparison.map(d => d.value), 1)
@@ -51,7 +69,6 @@ export default function Lab_Reports() {
         if (!mounted) return
         const arr = (res?.items || res || []).map((x:any)=> ({ id: String(x._id||x.id), name: x.name, start: x.start, end: x.end }))
         setShifts(arr)
-        if (!shiftId && arr.length) setShiftId(arr[0].id)
       } catch {}
     })()
     return ()=>{ mounted = false }
@@ -70,32 +87,30 @@ export default function Lab_Reports() {
     } catch { return null }
   }
 
-  async function computeShiftCash(){
-    const sh = shifts.find(s=>s.id===shiftId)
-    const win = getShiftWindow(shiftDate, sh)
-    if (!win) return
-    setShiftLoading(true)
+  function fmt12(hhmm: string): string {
     try{
-      const [ordersRes, movRes, expRes]: any = await Promise.all([
-        labApi.listOrders({ from: shiftDate, to: shiftDate, page: 1, limit: 1000 }),
-        labApi.listCashMovements({ from: shiftDate, to: shiftDate, page: 1, limit: 1000 }),
-        labApi.listExpenses({ from: shiftDate, to: shiftDate, page: 1, limit: 1000 })
-      ])
-      const ts = (d:any)=>{ const s=String(d||''); const iso = s.includes('T')? s : `${s}T00:00:00`; const t=new Date(iso).getTime(); return isFinite(t)? t:0 }
-      const inRange = (t:number)=> t>=win.start.getTime() && t<win.end.getTime()
-      const orders: any[] = (ordersRes?.items || [])
-      const revenue = orders.filter(o=> inRange(ts(o.createdAt||o.date))).reduce((s,o)=> s + Number(o.net||0), 0)
-      const movs: any[] = (movRes?.items || movRes || [])
-      const inMov = movs.filter(m=> String(m.type||'')==='IN' && inRange(ts(m.date||m.dateIso||m.createdAt))).reduce((s,m)=> s + Number(m.amount||0), 0)
-      const outMov = movs.filter(m=> String(m.type||'')==='OUT' && inRange(ts(m.date||m.dateIso||m.createdAt))).reduce((s,m)=> s + Number(m.amount||0), 0)
-      const exps: any[] = (expRes?.items || expRes || [])
-      const expenses = exps.filter(e=> inRange(ts(e.date||e.dateIso||e.createdAt))).reduce((s,e)=> s + Number(e.amount||0), 0)
-      const net = Math.max(0, (revenue + inMov) - (outMov + expenses))
-      setShiftCash({ revenue, inMov, outMov, expenses, net })
-    } catch {
-      setShiftCash({ revenue: 0, inMov: 0, outMov: 0, expenses: 0, net: 0 })
-    } finally { setShiftLoading(false) }
+      if (!hhmm) return ''
+      const s = String(hhmm).trim()
+      if (/[ap]m/i.test(s)){
+        const mm = s.match(/^(\d{1,2}):(\d{2})\s*([ap]m)$/i)
+        if (mm){
+          const h = Math.max(1, Math.min(12, parseInt(mm[1],10) || 12))
+          return `${String(h).padStart(2,'0')}:${mm[2]} ${mm[3].toUpperCase()}`
+        }
+        return s.replace(/(am|pm)/i, (m)=>m.toUpperCase())
+      }
+      const parts = s.split(':')
+      if (parts.length < 2) return s
+      const h = parseInt(parts[0],10)
+      const m = parts[1].slice(0,2)
+      if (isNaN(h)) return s
+      const am = h < 12
+      const h12 = (h % 12) || 12
+      return `${String(h12).padStart(2,'0')}:${m} ${am ? 'AM' : 'PM'}`
+    } catch { return hhmm }
   }
+
+  
 
   const apply = () => setTick(t => t + 1)
 
@@ -109,7 +124,7 @@ export default function Lab_Reports() {
 
       <div className="rounded-xl border border-slate-200 bg-white p-4">
         <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto] items-end">
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">From</label>
               <input type="date" value={from} onChange={e=>setFrom(e.target.value)} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" />
@@ -118,9 +133,23 @@ export default function Lab_Reports() {
               <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">To</label>
               <input type="date" value={to} onChange={e=>setTo(e.target.value)} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" />
             </div>
+            <div>
+              <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">From Time (optional)</label>
+              <input type="time" value={fromTime} onChange={e=>setFromTime(e.target.value)} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm text-slate-700 dark:text-slate-300">To Time (optional)</label>
+              <input type="time" value={toTime} onChange={e=>setToTime(e.target.value)} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" />
+            </div>
           </div>
           <div className="flex items-end">
-            <button onClick={apply} className="btn">Apply</button>
+            <div className="flex flex-wrap items-center gap-2">
+              <select value={filterShiftId} onChange={e=>setFilterShiftId(e.target.value)} className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm">
+                <option value="">All Shifts</option>
+                {shifts.map(s=> <option key={s.id} value={s.id}>{s.name} ({fmt12(s.start)}-{fmt12(s.end)})</option>)}
+              </select>
+              <button onClick={apply} className="btn">Apply</button>
+            </div>
           </div>
         </div>
       </div>
@@ -137,30 +166,7 @@ export default function Lab_Reports() {
         <SummaryCard title="Out of Stock" value={loading? '…' : `${invStats?.outOfStockCount||0}`} bg="bg-rose-50" border="border-rose-200" />
       </div>
 
-      {/* Shift-wise Cash */}
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <div className="mb-2 text-sm font-medium text-slate-800">Shift-wise Cash</div>
-        <div className="flex flex-wrap items-end gap-3 text-sm">
-          <label className="text-slate-700">
-            <div className="mb-1">Date</div>
-            <input type="date" value={shiftDate} onChange={e=>setShiftDate(e.target.value)} className="rounded-md border border-slate-300 px-3 py-2" />
-          </label>
-          <label className="text-slate-700">
-            <div className="mb-1">Shift</div>
-            <select value={shiftId} onChange={e=>setShiftId(e.target.value)} className="rounded-md border border-slate-300 px-3 py-2 min-w-[160px]">
-              {shifts.map(s=> <option key={s.id} value={s.id}>{s.name} ({s.start}-{s.end})</option>)}
-            </select>
-          </label>
-          <button onClick={computeShiftCash} disabled={!shiftId || shiftLoading} className="btn disabled:opacity-50">{shiftLoading? 'Calculating…' : 'Calculate'}</button>
-        </div>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5 text-sm">
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3"><div className="text-slate-600">Revenue (Orders)</div><div className="mt-1 font-semibold text-slate-900">PKR {shiftCash.revenue.toLocaleString()}</div></div>
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3"><div className="text-slate-600">Cash In (Movements)</div><div className="mt-1 font-semibold text-slate-900">PKR {shiftCash.inMov.toLocaleString()}</div></div>
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3"><div className="text-slate-600">Cash Out (Movements)</div><div className="mt-1 font-semibold text-slate-900">PKR {shiftCash.outMov.toLocaleString()}</div></div>
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3"><div className="text-slate-600">Expenses</div><div className="mt-1 font-semibold text-slate-900">PKR {shiftCash.expenses.toLocaleString()}</div></div>
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3"><div className="text-slate-600">Net Cash</div><div className="mt-1 font-semibold text-slate-900">PKR {shiftCash.net.toLocaleString()}</div></div>
-        </div>
-      </div>
+      {/* Shift-wise Cash removed; global filters above apply to all widgets */}
 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="rounded-xl border border-slate-200 bg-white p-4">

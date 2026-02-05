@@ -13,6 +13,9 @@ const InventoryItemSchema = new Schema({
   lastSupplier: { type: String },
   lastSalePerUnit: { type: Number, default: 0 },
   lastSupplierId: { type: String },
+  // Track last company associated with this item (for convenience when editing)
+  lastCompany: { type: String },
+  lastCompanyId: { type: String },
   lastInvoiceDate: { type: String },
   lastExpiry: { type: String },
   lastPacksReceived: { type: Number, default: 0 },
@@ -26,6 +29,8 @@ const InventoryItemSchema = new Schema({
   lastLineTaxValue: { type: Number, default: 0 },
   lastMedicineId: { type: String },
   avgCostPerUnit: { type: Number, default: 0 },
+  // New: default line discount (%) to auto-apply in POS cart
+  defaultDiscountPct: { type: Number, default: 0 },
 }, { timestamps: true, collection: 'pharmacy_inventoryitems' })
 
 export type InventoryItemDoc = {
@@ -42,6 +47,8 @@ export type InventoryItemDoc = {
   lastSupplier?: string
   lastSalePerUnit?: number
   lastSupplierId?: string
+  lastCompany?: string
+  lastCompanyId?: string
   lastInvoiceDate?: string
   lastExpiry?: string
   lastPacksReceived?: number
@@ -55,6 +62,7 @@ export type InventoryItemDoc = {
   lastLineTaxValue?: number
   lastMedicineId?: string
   avgCostPerUnit?: number
+  defaultDiscountPct?: number
 }
 
 export const InventoryItem = models.Pharmacy_InventoryItem || model('Pharmacy_InventoryItem', InventoryItemSchema)

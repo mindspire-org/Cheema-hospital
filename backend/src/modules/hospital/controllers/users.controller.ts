@@ -4,6 +4,7 @@ import { env } from '../../../config/env'
 import { z } from 'zod'
 import { HospitalUser } from '../models/User'
 import { HospitalAuditLog } from '../models/AuditLog'
+import bcrypt from 'bcryptjs'
 
 const createSchema = z.object({
   username: z.string().min(1),
@@ -41,6 +42,7 @@ export async function create(req: Request, res: Response){
   const username = data.username.trim().toLowerCase()
   const existing = await HospitalUser.findOne({ username }).lean()
   if (existing) return res.status(409).json({ error: 'Username already exists' })
+  const hashed = await bcrypt.hash(String(data.password || '123'), 10)
   const doc: any = await HospitalUser.create({
     username,
     role: data.role,
@@ -48,7 +50,7 @@ export async function create(req: Request, res: Response){
     phone: data.phone,
     email: data.email,
     active: data.active ?? true,
-    passwordHash: data.password || '123',
+    passwordHash: hashed,
     phoneNormalized: data.phone ? data.phone.replace(/\D+/g,'') : undefined,
   })
   try {
@@ -76,7 +78,7 @@ export async function update(req: Request, res: Response){
   if (data.phone != null) { patch.phone = data.phone; patch.phoneNormalized = data.phone ? data.phone.replace(/\D+/g,'') : undefined }
   if (data.email != null) patch.email = data.email
   if (data.active != null) patch.active = data.active
-  if (data.password) patch.passwordHash = data.password
+  if (data.password) patch.passwordHash = await bcrypt.hash(String(data.password), 10)
   const u: any = await HospitalUser.findByIdAndUpdate(id, patch, { new: true })
   if (!u) return res.status(404).json({ error: 'User not found' })
   try {
@@ -118,8 +120,32 @@ export async function login(req: Request, res: Response){
   const username = data.username.trim().toLowerCase()
   const u: any = await HospitalUser.findOne({ username }).lean()
   if (!u || u.active === false) return res.status(401).json({ error: 'Invalid credentials' })
-  const pass = data.password || ''
-  const ok = (u.passwordHash && pass && u.passwordHash === pass) || (!u.passwordHash && pass === '123') || (!pass && u.passwordHash === '123')
+  const pass = String(data.password || '')
+  let ok = false
+  if (!pass) return res.status(401).json({ error: 'Invalid credentials' })
+  const stored = String(u.passwordHash || '')
+  const isHashed = stored.startsWith('$2')
+  if (stored) {
+    if (isHashed) {
+      try { ok = await bcrypt.compare(pass, stored) } catch { ok = false }
+    } else {
+      ok = stored === pass || (stored === '123' && pass === '123')
+      if (ok) {
+        try {
+          const rehash = await bcrypt.hash(pass, 10)
+          await HospitalUser.findByIdAndUpdate(u._id, { $set: { passwordHash: rehash } })
+        } catch {}
+      }
+    }
+  } else {
+    ok = pass === '123'
+    if (ok) {
+      try {
+        const rehash = await bcrypt.hash(pass, 10)
+        await HospitalUser.findByIdAndUpdate(u._id, { $set: { passwordHash: rehash } })
+      } catch {}
+    }
+  }
   if (!ok) return res.status(401).json({ error: 'Invalid credentials' })
   try {
     const actor = u.fullName || u.username || 'system'

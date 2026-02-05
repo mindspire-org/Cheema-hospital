@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Hospital_DoctorFinanceEntryDialog from '../../components/hospital/Hospital_DoctorFinanceEntryDialog'
 import { financeApi, hospitalApi } from '../../utils/api'
-
-const FINANCE_KEY = 'hospital.doctor_finance'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
 
 type EntryType = 'OPD' | 'IPD' | 'Procedure' | 'Payout' | 'Adjustment'
 
@@ -33,30 +33,34 @@ type Entry = {
   ref?: string
 }
 
-function readEntries(): Entry[] {
-  try {
-    const raw = localStorage.getItem(FINANCE_KEY)
-    if (!raw) return []
-    const arr = JSON.parse(raw) as Entry[]
-    return Array.isArray(arr) ? arr : []
-  } catch {
-    return []
-  }
-}
-
-function saveEntries(list: Entry[]) {
-  try { localStorage.setItem(FINANCE_KEY, JSON.stringify(list)) } catch {}
-}
-
 function toCsv(rows: Entry[]) {
-  const headers = ['id','datetime','doctorName','type','patient','mrNumber','tokenNo','description','doctorAmount']
-  const body = rows.map(r => [r.id, r.datetime, r.doctorName, r.type, r.patient||'', r.mrNumber||'', r.tokenNo||'', r.description||'', r.doctorAmount])
+  const headers = ['id','datetime','doctorName','type','patient','mrNumber','tokenNo','gross','discount','payable','sharePercent','doctorAmount','description']
+  const body = rows.map(r => {
+    const gross = Number(r.gross||0)
+    const discount = Number(r.discount||0)
+    const payable = Math.max(0, gross - discount)
+    return [
+      r.id,
+      r.datetime,
+      r.doctorName,
+      r.type,
+      r.patient||'',
+      r.mrNumber||'',
+      r.tokenNo||'',
+      gross,
+      discount,
+      payable,
+      r.sharePercent!=null? r.sharePercent.toFixed(2):'',
+      r.doctorAmount,
+      r.description||''
+    ]
+  })
   return [headers, ...body].map(arr => arr.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
 }
 
 export default function Hospital_DoctorFinance() {
   const [doctors, setDoctors] = useState<Doctor[]>([])
-  const [entries, setEntries] = useState<Entry[]>(readEntries())
+  const [entries, setEntries] = useState<Entry[]>([])
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [doctorId, setDoctorId] = useState<string>('All')
@@ -66,6 +70,7 @@ export default function Hospital_DoctorFinance() {
   const [rowsPerPage, setRowsPerPage] = useState(50)
   const [tick, setTick] = useState(0)
   const [balance, setBalance] = useState<number | null>(null)
+  
 
   useEffect(() => {
     // Always fetch doctors from DB on first mount and when dialog opens
@@ -82,8 +87,7 @@ export default function Hospital_DoctorFinance() {
     } catch {}
   }
 
-  useEffect(() => { saveEntries(entries) }, [entries])
-
+  
   useEffect(() => {
     async function loadBalance(){
       if (!doctorId || doctorId === 'All') { setBalance(null); return }
@@ -116,38 +120,17 @@ export default function Hospital_DoctorFinance() {
         doctorName: mapDoc(r.doctorId),
         type: (r.type || 'OPD') as EntryType,
         tokenId: r.tokenId,
-        tokenNo: r.tokenNo || (typeof r.memo === 'string' ? (r.memo.match(/#(\d+)/)?.[1] || undefined) : undefined),
+        tokenNo: r.tokenNo,
         patient: r.patientName,
         mrNumber: r.mrn,
         description: r.memo,
-        gross: undefined,
-        discount: undefined,
-        sharePercent: undefined,
+        gross: Number.isFinite(Number(r.gross)) ? Number(r.gross) : undefined,
+        discount: Number.isFinite(Number(r.discount)) ? Number(r.discount) : undefined,
+        sharePercent: r.sharePercent!=null ? Number(r.sharePercent) : undefined,
         doctorAmount: Number(r.amount||0),
         ref: undefined,
       }))
-      // Merge with de-duplication: avoid duplicates by id and by signature
-      setEntries(prev => {
-        const existingIds = new Set(prev.map(e=>e.id))
-        let merged = [...prev]
-        for (const be of newOnes){
-          if (existingIds.has(be.id)) continue
-          // Remove any non-backend rows that match same signature
-          const beDate = be.datetime.slice(0,10)
-          const beType = String(be.type||'').toLowerCase()
-          merged = merged.filter(x => {
-            if (String(x.id).startsWith('be:')) return true
-            const sameDoctor = (x.doctorId||'') === (be.doctorId||'')
-            const sameDate = String(x.datetime||'').slice(0,10) === beDate
-            const sameAmt = Number(x.doctorAmount||0) === Number(be.doctorAmount||0)
-            const sameType = String(x.type||'').toLowerCase() === beType
-            const sameMemo = (x.description||'').trim() === (be.description||'').trim()
-            return !(sameDoctor && sameDate && sameAmt && sameType && sameMemo)
-          })
-          merged.unshift(be)
-        }
-        return merged
-      })
+      setEntries(newOnes)
     } catch {}
   }
 
@@ -171,16 +154,16 @@ export default function Hospital_DoctorFinance() {
   }, [entries, from, to, doctorId, ttype, q])
 
   const summary = useMemo(() => {
-    let opd = 0, ipd = 0, procedure = 0, payouts = 0
+    let gross = 0, discount = 0, payable = 0, doctorShare = 0
     for (const e of filtered) {
-      const t = String(e.type||'').toLowerCase()
-      if (t === 'opd') opd += e.doctorAmount
-      else if (t === 'ipd') ipd += e.doctorAmount
-      else if (t.startsWith('proc')) procedure += e.doctorAmount
-      else if (t === 'payout') payouts += e.doctorAmount
+      const g = Number(e.gross||0)
+      const d = Number(e.discount||0)
+      gross += g
+      discount += d
+      payable += Math.max(0, g - d)
+      doctorShare += Number(e.doctorAmount||0)
     }
-    const net = opd + ipd + procedure + payouts
-    return { opd, ipd, procedure, payouts, net }
+    return { gross, discount, payable, doctorShare }
   }, [filtered])
 
   const exportCsv = () => {
@@ -194,6 +177,52 @@ export default function Hospital_DoctorFinance() {
     URL.revokeObjectURL(url)
   }
 
+  const downloadPdf = () => {
+    const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4', compress: true })
+    const pageWidth = pdf.internal.pageSize.getWidth()
+    const title = 'Doctors Finance Report'
+    const dateRange = from || to ? `${from || to}${to ? ' to '+to : ''}` : new Date().toISOString().slice(0,10)
+    const docName = doctorId==='All' ? 'All' : (doctors.find(d=>d.id===doctorId)?.name || '')
+    pdf.setFont('helvetica','bold')
+    pdf.setFontSize(14)
+    pdf.text(title, pageWidth/2, 14, { align: 'center' })
+    pdf.setFont('helvetica','normal')
+    pdf.setFontSize(10)
+    pdf.text(`Date: ${dateRange}`, pageWidth/2, 20, { align: 'center' })
+    pdf.text(`Doctor: ${docName}`, pageWidth/2, 25, { align: 'center' })
+    pdf.setFontSize(10)
+    const sumLine = `Gross: Rs ${summary.gross.toFixed(2)}   Discount: Rs ${summary.discount.toFixed(2)}   Payable: Rs ${summary.payable.toFixed(2)}   Doctor Share: Rs ${summary.doctorShare.toFixed(2)}`
+    pdf.text(sumLine, pageWidth/2, 31, { align: 'center' })
+    const headers = ['Date','Patient','MR #','Token #','Type','Gross','Discount','Payable','Share %','Doctor Amt']
+    const body = filtered.map(e => {
+      const gross = Number(e.gross||0)
+      const discount = Number(e.discount||0)
+      const payable = Math.max(0, gross - discount)
+      const share = e.sharePercent!=null ? Number(e.sharePercent).toFixed(2)+'%' : '-'
+      return [
+        new Date(e.datetime).toLocaleDateString(),
+        e.patient || '-',
+        e.mrNumber || '-',
+        e.tokenNo || '-',
+        e.type,
+        gross.toFixed(2),
+        discount.toFixed(2),
+        payable.toFixed(2),
+        share,
+        `Rs ${Number(e.doctorAmount||0).toFixed(2)}`
+      ]
+    })
+    autoTable(pdf, {
+      head: [headers],
+      body,
+      startY: 36,
+      styles: { font: 'helvetica', fontSize: 9, cellPadding: 2 },
+      headStyles: { fillColor: [248,249,251], textColor: 0, halign: 'left' },
+      columnStyles: { 5: { halign: 'right' }, 6: { halign: 'right' }, 7: { halign: 'right' }, 8: { halign: 'right' }, 9: { halign: 'right' } }
+    })
+    pdf.save(`doctor_finance_${new Date().toISOString().slice(0,10)}.pdf`)
+  }
+
   return (
     <div className="w-full px-6 py-8 space-y-4">
       <div className="flex items-center justify-between">
@@ -203,6 +232,7 @@ export default function Hospital_DoctorFinance() {
         </div>
         <div className="flex items-center gap-2">
           <button onClick={()=>{ setTick(t=>t+1); syncBackendEarnings() }} className="btn-outline-navy">Refresh</button>
+          <button onClick={downloadPdf} className="btn-outline-navy">Download PDF</button>
           <button onClick={exportCsv} className="btn-outline-navy">Export CSV</button>
           <button onClick={()=>setAddOpen(true)} className="btn">+ Add Entry</button>
         </div>
@@ -244,12 +274,11 @@ export default function Hospital_DoctorFinance() {
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <SummaryCard title="OPD Earnings" amount={summary.opd} tone="emerald" />
-        <SummaryCard title="IPD Earnings" amount={summary.ipd} tone="sky" />
-        <SummaryCard title="Procedure Earnings" amount={summary.procedure} tone="violet" />
-        <SummaryCard title="Paid to Doctor" amount={summary.payouts} tone="amber" />
-        <SummaryCard title="Net Due" amount={summary.net} tone="amber" subtitle={`Payouts: Rs ${(summary.payouts).toFixed(2)}`} />
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <SummaryCard title="Gross (Tokens)" amount={summary.gross} tone="violet" />
+        <SummaryCard title="Discount" amount={summary.discount} tone="sky" />
+        <SummaryCard title="Payable" amount={summary.payable} tone="emerald" />
+        <SummaryCard title="Doctor Share" amount={summary.doctorShare} tone="amber" />
         {balance!=null && <SummaryCard title="Doctor Payable Balance" amount={balance} tone={balance>=0? 'amber':'emerald'} />}
       </div>
 
@@ -265,7 +294,10 @@ export default function Hospital_DoctorFinance() {
                 <th className="px-4 py-2 font-medium">Patient</th>
                 <th className="px-4 py-2 font-medium">MR Number</th>
                 <th className="px-4 py-2 font-medium">Token Number</th>
-                <th className="px-4 py-2 font-medium">Description</th>
+                <th className="px-4 py-2 font-medium">Gross</th>
+                <th className="px-4 py-2 font-medium">Discount</th>
+                <th className="px-4 py-2 font-medium">Payable</th>
+                <th className="px-4 py-2 font-medium">Share %</th>
                 <th className="px-4 py-2 font-medium">Doctor Amt</th>
                 <th className="px-4 py-2 font-medium">Actions</th>
               </tr>
@@ -279,7 +311,10 @@ export default function Hospital_DoctorFinance() {
                   <td className="px-4 py-2">{e.patient || '-'}</td>
                   <td className="px-4 py-2">{e.mrNumber || '-'}</td>
                   <td className="px-4 py-2">{e.tokenNo || '-'}</td>
-                  <td className="px-4 py-2">{e.description || '-'}</td>
+                  <td className="px-4 py-2">{Number(e.gross||0).toFixed(2)}</td>
+                  <td className="px-4 py-2">{Number(e.discount||0).toFixed(2)}</td>
+                  <td className="px-4 py-2">{(Math.max(0, Number(e.gross||0) - Number(e.discount||0))).toFixed(2)}</td>
+                  <td className="px-4 py-2">{e.sharePercent!=null ? `${Number(e.sharePercent).toFixed(2)}%` : '-'}</td>
                   <td className={`px-4 py-2 ${e.doctorAmount < 0 ? 'text-rose-600' : 'text-emerald-700'} font-medium`}>Rs {e.doctorAmount.toFixed(2)}</td>
                   <td className="px-4 py-2">
                     <div className="flex gap-2">
@@ -320,8 +355,7 @@ export default function Hospital_DoctorFinance() {
               if (e.type === 'Payout'){
                 const amt = Math.abs(e.gross || e.doctorAmount || 0)
                 await financeApi.doctorPayout({ doctorId: e.doctorId || '', amount: amt, memo })
-                // Optimistically append payout locally (not returned by backend earnings)
-                setEntries(prev => [e, ...prev])
+                await syncBackendEarnings()
               } else {
                 const t = String(e.type || '').trim().toLowerCase()
                 const revenueAccount = (t.startsWith('proc') ? 'PROCEDURE_REVENUE' : (t === 'ipd' || t.startsWith('ipd') ? 'IPD_REVENUE' : 'OPD_REVENUE')) as 'OPD_REVENUE'|'PROCEDURE_REVENUE'|'IPD_REVENUE'
@@ -338,6 +372,7 @@ export default function Hospital_DoctorFinance() {
       )}
 
       <div className="text-xs text-slate-500">Manage doctors in <Link to="/hospital/doctors" className="text-sky-700 hover:underline">Hospital → Doctors</Link></div>
+
     </div>
   )
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { labApi } from '../../utils/api'
+import { hospitalApi } from '../../utils/api'
 
 type Shift = {
   id: string
@@ -20,7 +20,7 @@ export default function Pharmacy_StaffSettings(){
     let mounted = true
     ;(async () => {
       try {
-        const res = await labApi.listShifts()
+        const res = await hospitalApi.listShifts()
         if (!mounted) return
         const mapped: Shift[] = (res.items||[]).map((x:any)=>({
           id: x._id,
@@ -43,7 +43,7 @@ export default function Pharmacy_StaffSettings(){
   }
 
   const addShift = async () => {
-    const created = await labApi.createShift({ name: `Shift ${shifts.length+1}`, start: '09:00', end: '17:00', absentCharges: 0, lateDeduction: 0, earlyOutDeduction: 0 })
+    const created = await hospitalApi.createShift({ name: `Shift ${shifts.length+1}`, start: '09:00', end: '17:00', absentCharges: 0, lateDeduction: 0, earlyOutDeduction: 0 })
     setShifts(s => [...s, {
       id: created._id,
       name: created.name,
@@ -56,7 +56,7 @@ export default function Pharmacy_StaffSettings(){
     }])
   }
   const removeShift = async (id: string) => {
-    await labApi.deleteShift(id)
+    await hospitalApi.deleteShift(id)
     setShifts(s => s.filter(x=>x.id!==id))
   }
 
@@ -64,7 +64,7 @@ export default function Pharmacy_StaffSettings(){
     setSaving(true)
     try {
       // Persist updates for all shifts
-      await Promise.all(shifts.map(sh => labApi.updateShift(sh.id, {
+      await Promise.all(shifts.map(sh => hospitalApi.updateShift(sh.id, {
         name: sh.name,
         start: sh.start,
         end: sh.end,

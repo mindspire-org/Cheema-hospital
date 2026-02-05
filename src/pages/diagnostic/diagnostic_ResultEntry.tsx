@@ -1,26 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { diagnosticApi } from '../../utils/api'
-import { DiagnosticFormRegistry } from '../../components/diagnostic/registry'
-import { printEchocardiographyReport } from '../../components/diagnostic/diagnostic_Echocardiography'
-import { printUltrasoundReport } from '../../components/diagnostic/diagnostic_UltrasoundGeneric'
-import { printCTScanReport } from '../../components/diagnostic/diagnostic_CTScan'
-import { printColonoscopyReport } from '../../components/diagnostic/diagnostic_Colonoscopy'
-import { printUpperGIEndoscopyReport } from '../../components/diagnostic/diagnostic_UpperGIEndoscopy'
+import { DiagnosticTemplateRegistry } from '../../components/diagnostic/registry'
 import type { ReportRendererProps } from '../../components/diagnostic/registry'
 
 type Order = { id: string; tokenNo?: string; createdAt?: string; patient: any; tests: string[]; referringConsultant?: string; items?: Array<{ testId: string; status: 'received'|'completed'|'returned'; sampleTime?: string; reportingTime?: string }>; status?: 'received'|'completed'|'returned' }
 type Test = { id: string; name: string }
-
-function resolveKey(name: string){
-  const n = (name||'').toLowerCase()
-  if (n.includes('ultrasound')) return 'Ultrasound'
-  if (n.replace(/\s+/g,'') === 'ctscan') return 'CTScan'
-  if (n.includes('echocardio')) return 'Echocardiography'
-  if (n.includes('colonoscopy')) return 'Colonoscopy'
-  if (n.includes('uppergi')) return 'UpperGiEndoscopy'
-  return name
-}
 
 function formatDateTime(iso?: string) {
   const d = new Date(iso || new Date().toISOString());
@@ -40,6 +25,8 @@ export default function Diagnostic_ResultEntry(){
   const [orderFromResult, setOrderFromResult] = useState<Order | null>(null)
   const selectedOrder = useMemo(()=> orders.find(o=>o.id===selectedOrderId) || orderFromResult || null, [orders, selectedOrderId, orderFromResult])
   const selectedTestName = useMemo(()=> testsMap[selectedTestId] || '', [testsMap, selectedTestId])
+  const [templateMappings, setTemplateMappings] = useState<Array<{ testId: string; templateKey: string }>>([])
+  const templateKeyByTestId = useMemo(()=> Object.fromEntries((templateMappings||[]).map(m=> [String(m.testId), String(m.templateKey)])), [templateMappings])
 
   // Filters & pagination (aligned with Sample Tracking)
   const [q, setQ] = useState('')
@@ -57,6 +44,15 @@ export default function Diagnostic_ResultEntry(){
       const tr = await diagnosticApi.listTests({ limit: 1000 }) as any
       setTests((tr?.items||tr||[]).map((t:any)=>({ id: String(t._id||t.id), name: t.name })))
     } catch { setTests([]) }
+  })() }, [])
+
+  // Load template mappings from settings
+  useEffect(()=>{ (async()=>{
+    try {
+      const s = await diagnosticApi.getSettings() as any
+      const arr = Array.isArray(s?.templateMappings) ? s.templateMappings : []
+      setTemplateMappings(arr.map((x:any)=> ({ testId: String(x.testId||''), templateKey: String(x.templateKey||'') })))
+    } catch { setTemplateMappings([]) }
   })() }, [])
 
   // Load orders according to filters/pagination
@@ -114,9 +110,9 @@ export default function Diagnostic_ResultEntry(){
   })() }, [searchParams])
 
   const FormComp = useMemo(()=>{
-    const key = resolveKey(selectedTestName)
-    return (DiagnosticFormRegistry as any)[key] as React.ComponentType<ReportRendererProps> | undefined
-  }, [selectedTestName])
+    const key = templateKeyByTestId[selectedTestId]
+    return key ? (DiagnosticTemplateRegistry as any)[key]?.Form as React.ComponentType<ReportRendererProps> : undefined
+  }, [selectedTestId, templateKeyByTestId])
 
   async function save(){
     if (!selectedOrder || !selectedTestId) return
@@ -153,34 +149,10 @@ export default function Diagnostic_ResultEntry(){
 
   async function printNow(){
     if (!selectedOrder || !selectedTestId) return
-    const key = resolveKey(selectedTestName)
-    if (key === 'Echocardiography'){
-      await printEchocardiographyReport({
-        tokenNo: selectedOrder.tokenNo,
-        createdAt: selectedOrder.createdAt,
-        reportedAt: new Date().toISOString(),
-        patient: selectedOrder.patient,
-        value,
-        referringConsultant: selectedOrder.referringConsultant,
-      })
-      return
-    }
-    if (key === 'Ultrasound'){
-      await printUltrasoundReport({ tokenNo: selectedOrder.tokenNo, createdAt: selectedOrder.createdAt, reportedAt: new Date().toISOString(), patient: selectedOrder.patient, value, referringConsultant: selectedOrder.referringConsultant })
-      return
-    }
-    if (key === 'CTScan'){
-      await printCTScanReport({ tokenNo: selectedOrder.tokenNo, createdAt: selectedOrder.createdAt, reportedAt: new Date().toISOString(), patient: selectedOrder.patient, value, referringConsultant: selectedOrder.referringConsultant })
-      return
-    }
-    if (key === 'Colonoscopy'){
-      await printColonoscopyReport({ tokenNo: selectedOrder.tokenNo, createdAt: selectedOrder.createdAt, reportedAt: new Date().toISOString(), patient: selectedOrder.patient, value, referringConsultant: selectedOrder.referringConsultant })
-      return
-    }
-    if (key === 'UpperGiEndoscopy'){
-      await printUpperGIEndoscopyReport({ tokenNo: selectedOrder.tokenNo, createdAt: selectedOrder.createdAt, reportedAt: new Date().toISOString(), patient: selectedOrder.patient, value, referringConsultant: selectedOrder.referringConsultant })
-      return
-    }
+    const key = templateKeyByTestId[selectedTestId]
+    const tpl = key ? (DiagnosticTemplateRegistry as any)[key] : null
+    if (!tpl || !tpl.print){ alert('No report template mapped for this test. Please set mapping in Diagnostic Settings.'); return }
+    await tpl.print({ tokenNo: selectedOrder.tokenNo, createdAt: selectedOrder.createdAt, reportedAt: new Date().toISOString(), patient: selectedOrder.patient, value, referringConsultant: selectedOrder.referringConsultant })
   }
 
   // Pagination helpers

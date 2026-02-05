@@ -38,6 +38,8 @@ export default function Hospital_Dashboard() {
   const [updatedAt, setUpdatedAt] = useState<string>('—')
   const [fromDate, setFromDate] = useState<string>(iso(startOfMonth(new Date())))
   const [toDate, setToDate] = useState<string>(iso(new Date()))
+  const [fromTime, setFromTime] = useState<string>('')
+  const [toTime, setToTime] = useState<string>('')
   const [stats, setStats] = useState({
     tokens: 0,
     admissions: 0,
@@ -48,26 +50,54 @@ export default function Hospital_Dashboard() {
     present: 0,
     late: 0,
   })
-  const [tokens, setTokens] = useState<any[]>([])
+  // tokens state not needed for widgets; using counts from fetched arrays directly
   const [expenses, setExpenses] = useState<any[]>([])
   const [ipdPayments, setIpdPayments] = useState<any[]>([])
   const [doctorEarnRows, setDoctorEarnRows] = useState<any[]>([])
   const [doctorPayoutsTotal, setDoctorPayoutsTotal] = useState<number>(0)
+  const [opdRevenueAmt, setOpdRevenueAmt] = useState<number>(0)
+  const [ipdRevenueAmt, setIpdRevenueAmt] = useState<number>(0)
   const REFRESH_MS = 15000
 
-  // Shift-wise cash
-  const [shiftDate, setShiftDate] = useState<string>(iso(new Date()))
+  // Shifts for global filter
   const [shifts, setShifts] = useState<Array<{ id: string; name: string; start: string; end: string }>>([])
-  const [shiftId, setShiftId] = useState<string>('')
-  const [shiftLoading, setShiftLoading] = useState(false)
-  const [shiftCash, setShiftCash] = useState<{ opening: number; cashIn: number; cashOut: number; net: number; expected: number; counted: number; overShort: number }>({ opening: 0, cashIn: 0, cashOut: 0, net: 0, expected: 0, counted: 0, overShort: 0 })
+  const [filterShiftId, setFilterShiftId] = useState<string>('')
 
-  useEffect(() => { load() }, [fromDate, toDate])
+  useEffect(() => { load() }, [fromDate, toDate, fromTime, toTime, filterShiftId])
+
+  function getEffectiveWindow(){
+    // If custom time range is provided, it overrides shift
+    const hasTime = !!(fromTime && toTime)
+    if (hasTime){
+      try{
+        const [fy,fm,fd] = fromDate.split('-').map(n=>parseInt(n||'0',10))
+        const [ty,tm,td] = toDate.split('-').map(n=>parseInt(n||'0',10))
+        const [fh,fmin] = fromTime.split(':').map(n=>parseInt(n||'0',10))
+        const [th,tmin] = toTime.split(':').map(n=>parseInt(n||'0',10))
+        const start = new Date(fy,(fm-1),fd,fh||0,fmin||0,0)
+        let end = new Date(ty,(tm-1),td,th||0,tmin||0,0)
+        if (end <= start) end = new Date(end.getTime() + 24*60*60*1000)
+        return { start, end }
+      }catch{ return null }
+    }
+    if (filterShiftId){
+      const sh = shifts.find(s=> s.id===filterShiftId)
+      const win = getShiftWindow(toDate, sh)
+      return win
+    }
+    return null
+  }
+
+  function toTimeMs(x:any){
+    const s = String(x?.receivedAt||x?.dateIso||x?.date||x?.createdAt||'')
+    const t = new Date(s).getTime()
+    return Number.isFinite(t) ? t : NaN
+  }
 
   async function load(){
     setLoading(true)
     try {
-      const [tokensRes, expensesRes, staffRes, bedsAllRes, bedsOccRes, attRes, shiftsRes, ipdAdmsRes, doctorsRes] = await Promise.all([
+      const [tokensRes, expensesRes, staffRes, bedsAllRes, bedsOccRes, attRes, shiftsRes, ipdAdmsRes, doctorsRes, trialRes] = await Promise.all([
         hospitalApi.listTokens({ from: fromDate, to: toDate }) as any,
         hospitalApi.listExpenses({ from: fromDate, to: toDate }) as any,
         hospitalApi.listStaff() as any,
@@ -77,9 +107,10 @@ export default function Hospital_Dashboard() {
         hospitalApi.listShifts() as any,
         hospitalApi.listIPDAdmissions({ from: fromDate, to: toDate, limit: 500 }) as any,
         hospitalApi.listDoctors() as any,
+        financeApi.trialBalance({ from: fromDate, to: toDate }) as any,
       ])
-      const tokensArr: any[] = tokensRes?.tokens || tokensRes?.items || tokensRes || []
-      const expensesArr: any[] = expensesRes?.expenses || expensesRes?.items || expensesRes || []
+      let tokensArr: any[] = tokensRes?.tokens || tokensRes?.items || tokensRes || []
+      let expensesArr: any[] = expensesRes?.expenses || expensesRes?.items || expensesRes || []
       let staffArr: any[] = staffRes?.staff || staffRes?.items || staffRes || []
       const allBeds: any[] = bedsAllRes?.beds || []
       const occBeds: any[] = bedsOccRes?.beds || []
@@ -87,7 +118,13 @@ export default function Hospital_Dashboard() {
       let shifts: any[] = (shiftsRes?.items || shiftsRes || [])
       const ipdAdms: any[] = ipdAdmsRes?.admissions || ipdAdmsRes?.items || ipdAdmsRes || []
 
-      setTokens(tokensArr)
+      // Apply global time window if enabled
+      const win = getEffectiveWindow()
+      if (win){
+        const inWin = (x:any)=>{ const t = toTimeMs(x); return Number.isFinite(t) && t >= win.start.getTime() && t < win.end.getTime() }
+        tokensArr = tokensArr.filter(inWin)
+        expensesArr = expensesArr.filter(inWin)
+      }
       setExpenses(expensesArr)
       setDoctorEarnRows([])
 
@@ -112,9 +149,14 @@ export default function Hospital_Dashboard() {
         const payoutsLists = await Promise.all(doctors.map(async d => {
           try { const r:any = await financeApi.doctorPayouts(d.id, 200); return (r?.payouts || []) } catch { return [] }
         }))
-        const payouts = ([] as any[]).concat(...payoutsLists)
+        let payouts = ([] as any[]).concat(...payoutsLists)
+        if (win){
+          const inWin = (x:any)=>{ const t = toTimeMs(x); return Number.isFinite(t) && t >= win.start.getTime() && t < win.end.getTime() }
+          payouts = payouts.filter(inWin)
+        } else {
+          payouts = payouts.filter(p=>{ const dt = String(p.dateIso||p.date||p.createdAt||'').slice(0,10); return dt>=fromDate && dt<=toDate })
+        }
         const total = payouts
-          .filter(p=>{ const dt = String(p.dateIso||p.date||p.createdAt||'').slice(0,10); return dt>=fromDate && dt<=toDate })
           .reduce((s,p)=> s + money(p.amount), 0)
         setDoctorPayoutsTotal(total)
       } catch { setDoctorPayoutsTotal(0) }
@@ -128,8 +170,22 @@ export default function Hospital_Dashboard() {
           return items
         } catch { return [] as any[] }
       }))
-      const ipdPayFlat = ([] as any[]).concat(...ipdPaysArrays)
+      let ipdPayFlat = ([] as any[]).concat(...ipdPaysArrays)
+      if (win){
+        const inWin = (x:any)=>{ const t = toTimeMs(x); return Number.isFinite(t) && t >= win.start.getTime() && t < win.end.getTime() }
+        ipdPayFlat = ipdPayFlat.filter(inWin)
+      }
       setIpdPayments(ipdPayFlat)
+
+      // Revenue (from FinanceJournal trial balance)
+      try {
+        const rows: any[] = (trialRes?.rows || [])
+        const byAcc: Record<string, any> = {}
+        for (const r of rows) byAcc[String(r.account)] = r
+        const revOf = (acc: string) => money(-(byAcc[acc]?.balance || 0))
+        setOpdRevenueAmt(revOf('OPD_REVENUE'))
+        setIpdRevenueAmt(revOf('IPD_REVENUE'))
+      } catch { setOpdRevenueAmt(0); setIpdRevenueAmt(0) }
 
       const totalBeds = allBeds.length
       const occupied = occBeds.length
@@ -159,11 +215,7 @@ export default function Hospital_Dashboard() {
   }
 
   // Department map no longer needed after removing dept-wise widget
-  const tokensPaid = useMemo(()=> tokens.filter(t=> t.status!=='returned' && t.status!=='cancelled'), [tokens])
-  const opdRevenue = useMemo(()=> tokensPaid.reduce((s,t)=> s + money(t.net ?? (money(t.fee)-money(t.discount))), 0), [tokensPaid])
-  const ipdRevenue = useMemo(()=> ipdPayments
-    .filter(p=>{ const d = String(p.receivedAt||p.dateIso||p.date||p.createdAt||'').slice(0,10); return d>=fromDate && d<=toDate })
-    .reduce((s,p)=> s + money(p.amount), 0), [ipdPayments, fromDate, toDate])
+  // IPD revenue derived from backend trial balance
   const expensesTotal = useMemo(()=> expenses.reduce((s,e)=> s + money(e.amount), 0), [expenses])
   const doctorPayouts = useMemo(()=> (doctorEarnRows||[]).filter((r:any)=>{
     const t = String(r.type||'').toLowerCase()
@@ -172,7 +224,7 @@ export default function Hospital_Dashboard() {
   const doctorPayoutsCard = useMemo(()=> doctorPayoutsTotal>0 ? doctorPayoutsTotal : doctorPayouts, [doctorPayoutsTotal, doctorPayouts])
   // Salaries widget removed per request
 
-  const totalRevenue = useMemo(()=> opdRevenue + ipdRevenue, [opdRevenue, ipdRevenue])
+  const totalRevenue = useMemo(()=> opdRevenueAmt + ipdRevenueAmt, [opdRevenueAmt, ipdRevenueAmt])
   const recentIpdPayments = useMemo(()=> {
     const getDate = (p:any)=> new Date(String(p.receivedAt||p.dateIso||p.date||p.createdAt||'') || 0).getTime()
     return [...ipdPayments].sort((a,b)=> getDate(b) - getDate(a)).slice(0, 10)
@@ -186,8 +238,8 @@ export default function Hospital_Dashboard() {
     { title: 'Discharges', value: String(stats.discharges), tone: 'bg-amber-50 border-amber-200', icon: CalendarClock },
     { title: 'Active IPD Patients', value: String(stats.activeIpd), tone: 'bg-sky-50 border-sky-200', icon: Users },
     { title: 'Beds Available', value: String(stats.bedsAvailable), tone: 'bg-cyan-50 border-cyan-200', icon: BedSingle },
-    { title: 'OPD Revenue', value: `Rs ${opdRevenue.toFixed(0)}`, tone: 'bg-green-50 border-green-200', icon: DollarSign },
-    { title: 'IPD Revenue', value: `Rs ${ipdRevenue.toFixed(0)}`, tone: 'bg-green-50 border-green-200', icon: DollarSign },
+    { title: 'OPD Revenue', value: `Rs ${opdRevenueAmt.toFixed(0)}`, tone: 'bg-green-50 border-green-200', icon: DollarSign },
+    { title: 'IPD Revenue', value: `Rs ${ipdRevenueAmt.toFixed(0)}`, tone: 'bg-green-50 border-green-200', icon: DollarSign },
     { title: 'Total Revenue', value: `Rs ${totalRevenue.toFixed(0)}`, tone: 'bg-green-50 border-green-200', icon: DollarSign },
     { title: 'Expenses', value: `Rs ${expensesTotal.toFixed(0)}`, tone: 'bg-rose-50 border-rose-200', icon: DollarSign },
     { title: 'Doctor Payouts', value: `Rs ${doctorPayoutsCard.toFixed(0)}`, tone: 'bg-amber-50 border-amber-200', icon: DollarSign },
@@ -211,7 +263,7 @@ export default function Hospital_Dashboard() {
     return () => document.removeEventListener('visibilitychange', onVis)
   }, [])
 
-  // Load shifts once for shift-wise cash (fallback to Lab if needed)
+  // Load shifts once for global filter (fallback to Lab if needed)
   useEffect(()=>{
     let mounted = true
     ;(async()=>{
@@ -223,9 +275,9 @@ export default function Hospital_Dashboard() {
           try{
             const rl: any = await labApi.listShifts()
             const arr2 = (rl?.items || rl || []).map((x:any)=> ({ id: String(x._id||x.id), name: x.name, start: x.start, end: x.end }))
-            setShifts(arr2); if (!shiftId && arr2.length) setShiftId(arr2[0].id)
+            setShifts(arr2)
           } catch { setShifts([]) }
-        } else { setShifts(arr); if (!shiftId) setShiftId(arr[0].id) }
+        } else { setShifts(arr) }
       } catch { setShifts([]) }
     })()
     return ()=>{ mounted = false }
@@ -244,39 +296,7 @@ export default function Hospital_Dashboard() {
     } catch { return null }
   }
 
-  async function computeShiftCash(){
-    const sh = shifts.find(s=> s.id===shiftId)
-    const win = getShiftWindow(shiftDate, sh)
-    if (!win) return
-    setShiftLoading(true)
-    try {
-      const dayFrom = win.start.toISOString().slice(0,10)
-      const dayTo = win.end.toISOString().slice(0,10)
-      const resp: any = await financeApi.listCashSessions({ from: dayFrom, to: dayTo })
-      const items: any[] = resp?.sessions || resp?.items || resp || []
-      const sTime = win.start.getTime(), eTime = win.end.getTime()
-      const overlaps = (row: any) => {
-        const stStr = String(row.startAt||row.createdAt||row.dateIso||'')
-        const etStr = String(row.endAt||'')
-        const st = new Date(stStr).getTime()
-        const et = etStr ? new Date(etStr).getTime() : Number.MAX_SAFE_INTEGER
-        return isFinite(st) && st < eTime && et > sTime
-      }
-      const sess = items.filter(overlaps)
-      const sums = sess.reduce((acc: any, r: any)=>({
-        opening: acc.opening + money(r.openingFloat),
-        cashIn: acc.cashIn + money(r.cashIn),
-        cashOut: acc.cashOut + money(r.cashOut),
-        net: acc.net + money(r.netCash),
-        expected: acc.expected + money(r.expectedClosing),
-        counted: acc.counted + money(r.countedCash),
-        overShort: acc.overShort + money(r.overShort),
-      }), { opening:0, cashIn:0, cashOut:0, net:0, expected:0, counted:0, overShort:0 })
-      setShiftCash(sums)
-    } catch {
-      setShiftCash({ opening: 0, cashIn: 0, cashOut: 0, net: 0, expected: 0, counted: 0, overShort: 0 })
-    } finally { setShiftLoading(false) }
-  }
+  
 
   return (
     <div className="space-y-6">
@@ -284,15 +304,27 @@ export default function Hospital_Dashboard() {
 
       <div className="rounded-xl border border-slate-200 bg-white p-4">
         <div className="mb-3 flex items-center gap-2 text-slate-800 font-semibold"><Filter className="h-4 w-4" /> Filters</div>
-        <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
           <label className="flex items-center gap-2 text-sm"><span className="w-16 text-slate-600">From</span>
             <input type="date" value={fromDate} onChange={e=> setFromDate(e.target.value)} className="input" />
           </label>
           <label className="flex items-center gap-2 text-sm"><span className="w-16 text-slate-600">To</span>
             <input type="date" value={toDate} onChange={e=> setToDate(e.target.value)} className="input" />
           </label>
+          <label className="flex items-center gap-2 text-sm"><span className="w-20 text-slate-600">Shift</span>
+            <select value={filterShiftId} onChange={e=> setFilterShiftId(e.target.value)} className="input min-w-[160px]">
+              <option value="">All day</option>
+              {shifts.map(s=> <option key={s.id} value={s.id}>{s.name} ({s.start}-{s.end})</option>)}
+            </select>
+          </label>
+          <label className="flex items-center gap-2 text-sm"><span className="w-20 text-slate-600">From Time</span>
+            <input type="time" value={fromTime} onChange={e=>{ setFromTime(e.target.value); if (e.target.value) setFilterShiftId('') }} className="input" />
+          </label>
+          <label className="flex items-center gap-2 text-sm"><span className="w-20 text-slate-600">To Time</span>
+            <input type="time" value={toTime} onChange={e=>{ setToTime(e.target.value); if (e.target.value) setFilterShiftId('') }} className="input" />
+          </label>
           <div className="flex items-center gap-2">
-            <button onClick={()=>{ setFromDate(iso(startOfMonth(new Date()))); setToDate(iso(new Date())) }} className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"><RotateCcw className="h-4 w-4" /> Reset</button>
+            <button onClick={()=>{ setFromDate(iso(startOfMonth(new Date()))); setToDate(iso(new Date())); setFilterShiftId(''); setFromTime(''); setToTime('') }} className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"><RotateCcw className="h-4 w-4" /> Reset</button>
           </div>
         </div>
       </div>
@@ -311,32 +343,6 @@ export default function Hospital_Dashboard() {
             </div>
           </div>
         ))}
-      </div>
-
-      {/* Shift-wise Cash (Session-based) */}
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <div className="mb-2 text-slate-800 font-semibold">Shift-wise Cash</div>
-        <div className="flex flex-wrap items-end gap-3 text-sm">
-          <label className="flex items-center gap-2"><span className="w-16 text-slate-600">Date</span>
-            <input type="date" value={shiftDate} onChange={e=> setShiftDate(e.target.value)} className="input" />
-          </label>
-          <label className="flex items-center gap-2"><span className="w-16 text-slate-600">Shift</span>
-            <select value={shiftId} onChange={e=> setShiftId(e.target.value)} className="input min-w-[160px]">
-              {shifts.map(s=> <option key={s.id} value={s.id}>{s.name} ({s.start}-{s.end})</option>)}
-            </select>
-          </label>
-          <button onClick={computeShiftCash} disabled={!shiftId || shiftLoading} className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50">{shiftLoading? 'Calculating…' : 'Calculate'}</button>
-          <a href="/hospital/finance/cash-sessions" className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">View Sessions</a>
-        </div>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 text-sm">
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3"><div className="text-slate-600">Opening Float</div><div className="mt-1 font-semibold text-slate-900">Rs {shiftCash.opening.toFixed(0)}</div></div>
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3"><div className="text-slate-600">Cash In</div><div className="mt-1 font-semibold text-slate-900">Rs {shiftCash.cashIn.toFixed(0)}</div></div>
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3"><div className="text-slate-600">Cash Out</div><div className="mt-1 font-semibold text-slate-900">Rs {shiftCash.cashOut.toFixed(0)}</div></div>
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3"><div className="text-slate-600">Net Cash</div><div className="mt-1 font-semibold text-slate-900">Rs {shiftCash.net.toFixed(0)}</div></div>
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3"><div className="text-slate-600">Expected Closing</div><div className="mt-1 font-semibold text-slate-900">Rs {shiftCash.expected.toFixed(0)}</div></div>
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3"><div className="text-slate-600">Counted Cash</div><div className="mt-1 font-semibold text-slate-900">Rs {shiftCash.counted.toFixed(0)}</div></div>
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3"><div className="text-slate-600">Over / Short</div><div className="mt-1 font-semibold text-slate-900">Rs {shiftCash.overShort.toFixed(0)}</div></div>
-        </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">

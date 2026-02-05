@@ -1,4 +1,4 @@
-import { Outlet, useNavigate } from 'react-router-dom'
+import { Outlet, Navigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import Reception_Sidebar from '../../components/reception/reception_Sidebar'
 import Reception_Header from '../../components/reception/reception_Header'
@@ -8,14 +8,7 @@ export default function Reception_Layout(){
   const [theme, setTheme] = useState<'light'|'dark'>(()=>{
     try { return (localStorage.getItem('reception.theme') as 'light'|'dark') || 'light' } catch { return 'light' }
   })
-  const navigate = useNavigate()
-  useEffect(()=>{
-    try {
-      const sess = localStorage.getItem('reception.session')
-      if (!sess) navigate('/reception/login')
-    } catch { navigate('/reception/login') }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  const hasSession = (()=>{ try { return !!localStorage.getItem('reception.session') } catch { return false } })()
   useEffect(()=>{ try { localStorage.setItem('reception.theme', theme) } catch {} }, [theme])
   useEffect(()=>{
     const html = document.documentElement
@@ -23,15 +16,16 @@ export default function Reception_Layout(){
     try { html.classList.toggle('dark', enable) } catch {}
     return () => { try { html.classList.remove('dark') } catch {} }
   }, [theme])
-  const shell = theme === 'dark' ? 'min-h-dvh bg-slate-900 text-slate-100' : 'min-h-dvh bg-slate-50 text-slate-900'
+  const shell = theme === 'dark' ? 'h-dvh bg-slate-900 text-slate-100' : 'h-dvh bg-slate-50 text-slate-900'
+  if (!hasSession) return <Navigate to="/reception/login" replace />
   return (
     <div className={theme === 'dark' ? 'reception-scope dark' : 'reception-scope'}>
       <div className={shell}>
-        <div className="flex">
+        <div className="flex h-dvh overflow-hidden">
           <Reception_Sidebar collapsed={collapsed} />
-          <div className="flex min-h-dvh flex-1 flex-col">
+          <div className="flex h-dvh flex-1 flex-col overflow-hidden">
             <Reception_Header onToggleSidebar={()=> setCollapsed(c=>!c)} onToggleTheme={()=> setTheme(t=> t==='dark'?'light':'dark')} theme={theme} />
-            <main className="w-full flex-1 px-2 py-4">
+            <main className="w-full flex-1 overflow-y-auto px-2 py-4">
               <Outlet />
             </main>
           </div>

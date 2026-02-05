@@ -64,15 +64,15 @@ export default function Lab_Layout() {
       navigate('/lab/login')
     }
   }, [navigate])
-  const shell = theme === 'dark' ? 'min-h-dvh bg-slate-900 text-slate-100' : 'min-h-dvh bg-slate-50 text-slate-900'
+  const shell = theme === 'dark' ? 'h-dvh bg-slate-900 text-slate-100' : 'h-dvh bg-slate-50 text-slate-900'
   return (
     <div className={theme === 'dark' ? 'lab-scope dark' : 'lab-scope'}>
       <div className={shell}>
-        <div className="flex">
+        <div className="flex h-dvh overflow-hidden">
           <Lab_Sidebar collapsed={collapsed} />
-          <div className="flex min-h-dvh flex-1 flex-col">
+          <div className="flex h-dvh flex-1 flex-col overflow-hidden">
             <Lab_Header onToggleSidebar={toggle} onToggleTheme={toggleTheme} theme={theme} />
-            <main className="w-full flex-1 px-2 py-4">
+            <main className="w-full flex-1 overflow-y-auto px-2 py-4">
               <Outlet />
             </main>
           </div>

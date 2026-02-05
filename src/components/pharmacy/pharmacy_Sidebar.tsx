@@ -29,6 +29,7 @@ const nav = [
   { to: '/pharmacy/inventory', label: 'Inventory', Icon: Boxes },
   { to: '/pharmacy/customers', label: 'Customers', Icon: Users },
   { to: '/pharmacy/suppliers', label: 'Suppliers', Icon: Truck },
+  { to: '/pharmacy/companies', label: 'Companies', Icon: Users },
   { to: '/pharmacy/sales-history', label: 'Sales History', Icon: ReceiptText },
   { to: '/pharmacy/purchase-history', label: 'Purchase History', Icon: ShoppingCart },
   { to: '/pharmacy/return-history', label: 'Return History', Icon: RotateCcw },
@@ -116,24 +117,24 @@ export default function Pharmacy_Sidebar({ collapsed }: Props) {
   }, [role])
   return (
     <aside
-      className={`hidden md:flex ${collapsed ? 'md:w-16' : 'md:w-72'} md:flex-col md:border-r md:text-slate-700 bg-white`}
-      style={{ background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 55%, #eff6ff 100%)', borderColor: 'rgba(15, 23, 42, 0.10)' }}
+      className={`hidden md:flex ${collapsed ? 'md:w-16' : 'md:w-72'} md:flex-col md:border-r md:text-white overflow-x-hidden`}
+      style={{ background: 'linear-gradient(180deg, var(--navy) 0%, var(--navy-700) 100%)', borderColor: 'rgba(255,255,255,0.12)' }}
     >
-      <div className={`h-16 px-4 flex items-center border-b bg-white/70 backdrop-blur`} style={{ borderColor: 'rgba(15, 23, 42, 0.10)' }}>
+      <div className="h-16 px-4 flex items-center border-b" style={{ borderColor: 'rgba(255,255,255,0.12)' }}>
         <div className="flex items-center gap-2">
-          <div className={`grid h-9 w-9 place-items-center rounded-xl bg-sky-100 ring-sky-200 text-sky-800 ring-1`}>
+          <div className={`grid h-9 w-9 place-items-center rounded-xl bg-sky-600/20 ring-sky-500/40 text-sky-300 ring-1`}>
             <span className="text-sm font-bold">{collapsed ? 'P' : 'Rx'}</span>
           </div>
           {!collapsed && (
             <div className="leading-tight">
-              <div className={`text-sm font-semibold text-slate-900`}>Pharmacy</div>
-              <div className={`text-[11px] text-slate-500`}>HealthSpire</div>
+              <div className={`text-sm font-semibold text-white`}>Pharmacy</div>
+              <div className={`text-[11px] text-white/80`}>HealthSpire</div>
             </div>
           )}
         </div>
         {!collapsed && (
           <div
-            className={`ml-auto rounded-full px-2 py-1 text-[11px] font-semibold ring-1 bg-emerald-50 text-emerald-700 ring-emerald-200`}
+            className={`ml-auto rounded-full px-2 py-1 text-[11px] font-semibold ring-1 bg-emerald-500/15 text-emerald-300 ring-emerald-400/40`}
           >
             Online
           </div>
@@ -147,15 +148,13 @@ export default function Pharmacy_Sidebar({ collapsed }: Props) {
               key={item.to}
               to={item.to}
               className={({ isActive }) =>
-                `group flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition ${
-                  isActive
-                    ? 'bg-sky-100 text-sky-900 ring-1 ring-sky-200'
-                    : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+                `flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium ${
+                  isActive ? 'bg-white/10 text-white' : 'text-white/80 hover:bg-white/5'
                 }`
               }
               end={item.end}
             >
-              <Icon className="h-4 w-4 shrink-0 text-slate-500 group-hover:text-slate-800" />
+              <Icon className="h-4 w-4 shrink-0" />
               {!collapsed && <span className="truncate">{item.label}</span>}
             </NavLink>
           )
@@ -165,8 +164,8 @@ export default function Pharmacy_Sidebar({ collapsed }: Props) {
         <button
           type="button"
           onClick={handleLogout}
-          className={`w-full inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold bg-white text-slate-800 border border-slate-200 hover:bg-slate-50`}
-          style={undefined}
+          className="w-full inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium"
+          style={{ backgroundColor: 'rgba(255,255,255,0.08)', color: '#ffffff', border: '1px solid rgba(255,255,255,0.14)' }}
         >
           Logout
         </button>

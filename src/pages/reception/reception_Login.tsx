@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { hospitalApi } from "../../utils/api";
+import { receptionApi } from "../../utils/api";
 
 export default function Reception_Login() {
   const navigate = useNavigate();
@@ -28,30 +28,16 @@ export default function Reception_Login() {
     }
 
     try {
-      const res: any = await hospitalApi.loginHospitalUser(
-        username.trim(),
-        password
-      );
-
-      const user = res?.user;
-
+      const res: any = await receptionApi.login(username.trim(), password)
+      const user = res?.user
       if (!user) {
         setError("Invalid credentials");
         return;
       }
-
-      if (String(user.role) !== "Reception") {
-        setError("Access denied: This portal is only for Reception users");
-        return;
-      }
-
       try {
-        localStorage.setItem(
-          'reception.session',
-          JSON.stringify({ username: user.username, role: user.role })
-        )
+        localStorage.setItem('reception.user', JSON.stringify(user))
+        localStorage.setItem('reception.session', JSON.stringify({ username: user.username, role: user.role }))
       } catch {}
-
       navigate("/reception");
     } catch (err: any) {
       setError(err?.message || "Something went wrong");

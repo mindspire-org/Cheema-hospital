@@ -16,6 +16,11 @@ export const diagnosticSettingsUpdateSchema = z.object({
     degrees: z.string().optional(),
     title: z.string().optional(),
   })).max(3).optional(),
+  templateMappings: z.array(z.object({
+    testId: z.string(),
+    testName: z.string().optional(),
+    templateKey: z.string(),
+  })).optional(),
 })
 
 export type DiagnosticSettingsUpdate = z.infer<typeof diagnosticSettingsUpdateSchema>

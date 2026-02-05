@@ -1,4 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
 import { LayoutDashboard, ListChecks, FlaskConical, FileText, BarChart3, ScrollText, LogOut, Settings as Cog, Ticket, UserCog } from 'lucide-react'
 import { diagnosticApi } from '../../utils/api'
 
@@ -11,14 +12,63 @@ const nav: Item[] = [
   { to: '/diagnostic/result-entry', label: 'Result Entry', icon: FileText },
   { to: '/diagnostic/report-generator', label: 'Report Generator', icon: BarChart3 },
   { to: '/diagnostic/referrals', label: 'Referrals', icon: ListChecks },
+  { to: '/diagnostic/sidebar-permissions', label: 'Sidebar Permissions', icon: Cog },
   { to: '/diagnostic/user-management', label: 'User Management', icon: UserCog },
   { to: '/diagnostic/audit-logs', label: 'Audit Logs', icon: ScrollText },
   { to: '/diagnostic/settings', label: 'Settings', icon: Cog },
 ]
 
+export const diagnosticSidebarNav = nav
+
 export default function Diagnostic_Sidebar({ collapsed = false }: { collapsed?: boolean }) {
   const navigate = useNavigate()
   const width = collapsed ? 'md:w-16' : 'md:w-64'
+  const [role, setRole] = useState<string>('admin')
+  const [username, setUsername] = useState<string>('')
+  const [items, setItems] = useState<Item[]>(nav)
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('diagnostic.user') || localStorage.getItem('user')
+      if (raw) {
+        const u = JSON.parse(raw)
+        if (u?.role) setRole(String(u.role).toLowerCase())
+        if (u?.username) setUsername(String(u.username))
+      }
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      try {
+        const res: any = await (diagnosticApi as any).listSidebarPermissions?.(role)
+        const doc = Array.isArray(res) ? res[0] : res
+        const map = new Map<string, any>()
+        const perms = (doc?.permissions || []) as Array<{ path: string; visible?: boolean; order?: number }>
+        for (const p of perms) map.set(p.path, p)
+        const isAdmin = String(role || '').toLowerCase() === 'admin'
+        const computed = nav
+          .filter(item => {
+            if (item.to === '/diagnostic/sidebar-permissions' && !isAdmin) return false
+            const perm = map.get(item.to)
+            return perm ? perm.visible !== false : true
+          })
+          .sort((a, b) => {
+            const oa = map.get(a.to)?.order ?? Number.MAX_SAFE_INTEGER
+            const ob = map.get(b.to)?.order ?? Number.MAX_SAFE_INTEGER
+            if (oa !== ob) return oa - ob
+            const ia = nav.findIndex(n => n.to === a.to)
+            const ib = nav.findIndex(n => n.to === b.to)
+            return ia - ib
+          })
+        if (mounted) setItems(computed)
+      } catch {
+        if (mounted) setItems(nav)
+      }
+    })()
+    return () => { mounted = false }
+  }, [role])
   return (
     <aside
       className={`hidden md:flex ${width} md:flex-col md:border-r md:text-white`}
@@ -26,10 +76,10 @@ export default function Diagnostic_Sidebar({ collapsed = false }: { collapsed?: 
     >
       <div className="h-16 px-4 flex items-center border-b" style={{ borderColor: 'rgba(255,255,255,0.12)' }}>
         {!collapsed && <div className="font-semibold">SideBar</div>}
-        <div className={`ml-auto text-xs opacity-80 ${collapsed?'hidden':''}`}>admin</div>
+        <div className={`ml-auto text-xs opacity-80 ${collapsed?'hidden':''}`}>{username || role}</div>
       </div>
       <nav className="flex-1 overflow-y-auto p-3 space-y-1">
-        {nav.map(item => {
+        {items.map(item => {
           const Icon = item.icon
           return (
             <NavLink

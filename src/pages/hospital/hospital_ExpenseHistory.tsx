@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { hospitalApi } from '../../utils/api'
+import Hospital_SalarySlipDialog from '../../components/hospital/hospital_SalarySlipDialog'
 
  type ExpenseTxn = {
   id: string
@@ -28,6 +29,8 @@ export default function Finance_ExpenseHistory() {
   const base = location.pathname.startsWith('/hospital/') ? '/hospital/finance' : '/finance'
   const [deptList, setDeptList] = useState<Array<{ id: string; name: string }>>([])
   const [all, setAll] = useState<ExpenseTxn[]>([])
+  const [slipOpen, setSlipOpen] = useState(false)
+  const [slipExpense, setSlipExpense] = useState<any>(null)
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [dept, setDept] = useState<'All' | string>('All')
@@ -63,6 +66,13 @@ export default function Finance_ExpenseHistory() {
     })()
     return () => { cancelled = true }
   }, [from, to, tick, deptList])
+
+  // Refresh when salary payments trigger a global event
+  useEffect(()=>{
+    const onRefresh = () => setTick(t=>t+1)
+    try { window.addEventListener('hospital:expenses:refresh', onRefresh as any) } catch {}
+    return () => { try { window.removeEventListener('hospital:expenses:refresh', onRefresh as any) } catch {} }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -190,6 +200,7 @@ export default function Finance_ExpenseHistory() {
                 <th className="px-4 py-2 font-medium">Method</th>
                 <th className="px-4 py-2 font-medium">Ref</th>
                 <th className="px-4 py-2 font-medium">Amount</th>
+                <th className="px-4 py-2 font-medium text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 text-slate-700">
@@ -202,11 +213,16 @@ export default function Finance_ExpenseHistory() {
                   <td className="px-4 py-2">{r.method || '-'}</td>
                   <td className="px-4 py-2">{r.ref || '-'}</td>
                   <td className="px-4 py-2">Rs {r.amount.toFixed(2)}</td>
+                  <td className="px-4 py-2 text-right">
+                    {r.category === 'Salaries' && (
+                      <button onClick={()=>{ setSlipExpense(r); setSlipOpen(true) }} className="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50">Slip</button>
+                    )}
+                  </td>
                 </tr>
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-slate-500">No expenses</td>
+                  <td colSpan={8} className="px-4 py-12 text-center text-slate-500">No expenses</td>
                 </tr>
               )}
             </tbody>
@@ -217,6 +233,7 @@ export default function Finance_ExpenseHistory() {
           <div className="font-medium">Total: Rs {total.toFixed(2)}</div>
         </div>
       </div>
+      <Hospital_SalarySlipDialog open={slipOpen} onClose={()=>setSlipOpen(false)} expense={slipExpense} />
     </div>
   )
 }

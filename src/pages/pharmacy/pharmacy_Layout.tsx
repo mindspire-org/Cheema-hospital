@@ -61,15 +61,15 @@ export default function Pharmacy_Layout() {
     window.addEventListener('keydown', onKeyDown as any)
     return () => window.removeEventListener('keydown', onKeyDown as any)
   }, [navigate, location.pathname])
-  const shell = 'min-h-dvh bg-slate-50 text-slate-900'
+  const shell = 'h-dvh bg-slate-50 text-slate-900'
   return (
     <div className="pharmacy-scope">
       <div className={shell}>
-        <div className="flex">
-          <Pharmacy_Sidebar collapsed={collapsed} theme={theme} />
-          <div className="flex min-h-dvh flex-1 flex-col">
+        <div className="flex h-dvh overflow-hidden">
+          <Pharmacy_Sidebar collapsed={collapsed} />
+          <div className="flex h-dvh flex-1 flex-col overflow-hidden">
             <Pharmacy_Header onToggleSidebar={() => setCollapsed(c => !c)} theme={theme} />
-            <main className="w-full flex-1 p-0">
+            <main className="w-full flex-1 overflow-y-auto p-0">
               <Outlet />
             </main>
           </div>

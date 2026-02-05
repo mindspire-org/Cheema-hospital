@@ -24,7 +24,7 @@ export default function Aesthetic_Patients(){
   }
 
   return (
-    <div className="max-w-5xl mx-auto space-y-4">
+    <div className="w-full space-y-4">
       <div className="text-lg font-semibold">Patients</div>
       <div className="rounded-xl border border-slate-200 bg-white p-4">
         <div className="grid gap-3 md:grid-cols-5">

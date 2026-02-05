@@ -174,6 +174,9 @@ export async function update(req: Request, res: Response){
     date,
     supplierId,
     supplierName,
+    companyId,
+    companyName,
+    defaultDiscountPct,
   } = (req.body || {})
 
   const doc = await InventoryItem.findOne({ key: norm })
@@ -198,6 +201,9 @@ export async function update(req: Request, res: Response){
   if (date !== undefined) doc.lastInvoiceDate = String(date||'')
   if (supplierId !== undefined) doc.lastSupplierId = supplierId || undefined
   if (supplierName !== undefined) doc.lastSupplier = supplierName || undefined
+  if (companyId !== undefined) doc.lastCompanyId = companyId || undefined
+  if (companyName !== undefined) doc.lastCompany = companyName || undefined
+  if (defaultDiscountPct !== undefined && defaultDiscountPct !== '') doc.defaultDiscountPct = Math.max(0, Math.min(100, Number(defaultDiscountPct)))
   if (expiry){
     const e = String(expiry)
     doc.lastExpiry = e

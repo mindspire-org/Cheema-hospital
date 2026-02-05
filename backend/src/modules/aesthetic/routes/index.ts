@@ -18,6 +18,11 @@ import * as ProcedureSessions from '../controllers/procedure_sessions.controller
 import * as Tokens from '../controllers/tokens.controller'
 import * as Finance from '../controllers/finance.controller'
 import * as Doctors from '../controllers/doctors.controller'
+import * as Staff from '../controllers/staff.controller'
+import * as Shifts from '../controllers/shifts.controller'
+import * as Attendance from '../controllers/attendance.controller'
+import * as StaffEarnings from '../controllers/staff_earnings.controller'
+import * as SidebarPerms from '../controllers/sidebarPermission.controller'
 import { auth } from '../../../common/middleware/auth'
 
 const r = Router()
@@ -101,6 +106,28 @@ r.get('/finance/payables-summary', Finance.payablesSummary)
 r.get('/finance/earnings', Finance.listDoctorEarnings)
 r.post('/finance/journal/:id/reverse', Finance.reverseJournal)
 
+// Staff
+r.get('/staff', Staff.list)
+r.post('/staff', Staff.create)
+r.put('/staff/:id', Staff.update)
+r.delete('/staff/:id', Staff.remove)
+
+// Shifts
+r.get('/shifts', Shifts.list)
+r.post('/shifts', Shifts.create)
+r.put('/shifts/:id', Shifts.update)
+r.delete('/shifts/:id', Shifts.remove)
+
+// Attendance
+r.get('/attendance', Attendance.list)
+r.post('/attendance', Attendance.upsert)
+
+// Staff Earnings
+r.get('/staff-earnings', StaffEarnings.list)
+r.post('/staff-earnings', StaffEarnings.create)
+r.put('/staff-earnings/:id', StaffEarnings.update)
+r.delete('/staff-earnings/:id', StaffEarnings.remove)
+
 // Doctors (Aesthetic)
 r.get('/doctors', Doctors.list)
 r.post('/doctors', Doctors.create)
@@ -112,6 +139,15 @@ r.get('/users', Users.list)
 r.post('/users', Users.create)
 r.put('/users/:id', Users.update)
 r.delete('/users/:id', Users.remove)
+
+// Sidebar Roles & Permissions (Aesthetic)
+r.get('/sidebar-roles', SidebarPerms.listRoles)
+r.post('/sidebar-roles', SidebarPerms.createRole)
+r.delete('/sidebar-roles/:role', SidebarPerms.deleteRole)
+
+r.get('/sidebar-permissions', SidebarPerms.getPermissions)
+r.put('/sidebar-permissions/:role', SidebarPerms.updatePermissions)
+r.post('/sidebar-permissions/:role/reset', SidebarPerms.resetToDefaults)
 
 // Purchase Drafts
 r.get('/purchase-drafts', Drafts.list)

@@ -17,7 +17,7 @@ type RolePermissions = {
 }
 
 export default function Lab_SidebarPermissions() {
-  const [roles, setRoles] = useState<string[]>(['admin', 'technician', 'reception'])
+  const [roles, setRoles] = useState<string[]>([])
   const [selectedRole, setSelectedRole] = useState<string>('admin')
   const [permissions, setPermissions] = useState<RolePermissions[]>([])
   const [loading, setLoading] = useState(false)
@@ -118,10 +118,10 @@ export default function Lab_SidebarPermissions() {
       try {
         const r = await labApi.listSidebarRoles() as any
         const list = (r?.items || []) as string[]
-        if (Array.isArray(list) && list.length) {
+        if (Array.isArray(list)) {
           setRoles(list)
           if (!selectedRole || !list.includes(selectedRole)) {
-            setSelectedRole(list.includes('admin') ? 'admin' : list[0])
+            setSelectedRole(list.includes('admin') ? 'admin' : (list[0] || 'admin'))
           }
         }
       } catch {}
@@ -345,7 +345,7 @@ export default function Lab_SidebarPermissions() {
                 {selectedRole} Permissions
               </h3>
               <div className="flex gap-2">
-                {!['admin', 'technician', 'reception'].includes(String(selectedRole || '').toLowerCase()) && (
+                {String(selectedRole || '').toLowerCase() !== 'admin' && (
                   <button
                     type="button"
                     onClick={() => deleteRole(selectedRole)}

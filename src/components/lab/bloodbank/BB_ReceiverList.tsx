@@ -7,9 +7,11 @@ type Props = {
   onView?: (id: string) => void
   onEdit?: (id: string) => void
   onDelete?: (id: string) => void
+  onApprove?: (id: string) => void
+  onDispense?: (id: string) => void
 }
 
-export default function BB_ReceiverList({ rows, selectedId, onSelect, onView, onEdit, onDelete }: Props){
+export default function BB_ReceiverList({ rows, selectedId, onSelect, onView, onEdit, onDelete, onApprove, onDispense }: Props){
   return (
     <div className="rounded-xl border border-slate-200 bg-white">
       <div className="overflow-x-auto">
@@ -49,6 +51,12 @@ export default function BB_ReceiverList({ rows, selectedId, onSelect, onView, on
                     <button
                       onClick={(e)=>{ e.stopPropagation(); onEdit?.(r.id) }}
                       className="rounded-md border border-slate-300 px-2 py-1 hover:bg-slate-50">Edit</button>
+                    <button
+                      onClick={(e)=>{ e.stopPropagation(); onApprove?.(r.id) }}
+                      className="rounded-md border border-emerald-300 px-2 py-1 text-emerald-700 hover:bg-emerald-50">Approve</button>
+                    <button
+                      onClick={(e)=>{ e.stopPropagation(); onDispense?.(r.id) }}
+                      className="rounded-md border border-sky-300 px-2 py-1 text-sky-700 hover:bg-sky-50">Dispense</button>
                     <button
                       onClick={(e)=>{ e.stopPropagation(); onDelete?.(r.id) }}
                       className="rounded-md border border-rose-200 px-2 py-1 text-rose-700 hover:bg-rose-50">Delete</button>
