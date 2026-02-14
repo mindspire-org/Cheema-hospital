@@ -19,14 +19,22 @@ export default function Finance_Layout(){
   return (
     <div className={theme === 'dark' ? 'finance-scope dark' : 'finance-scope'}>
       <div className={shell}>
-        <div className="flex h-dvh overflow-hidden">
-          <Finance_Sidebar collapsed={collapsed} />
-          <div className="flex h-dvh flex-1 flex-col overflow-hidden">
-            <Finance_Header onToggleSidebar={()=> setCollapsed(c=>!c)} onToggleTheme={()=> setTheme(t=> t==='dark'?'light':'dark')} theme={theme} />
-            <main className="w-full flex-1 overflow-y-auto px-2 py-4">
-              <Outlet />
-            </main>
+        <div className="sticky top-0 z-20 w-full md:border-b" style={{ background: 'linear-gradient(180deg, var(--navy) 0%, var(--navy-700) 100%)', borderColor: 'rgba(255,255,255,0.12)' }}>
+          <div className="flex h-14">
+            <Finance_Header
+              variant="navy"
+              onToggleSidebar={()=> setCollapsed(c=>!c)}
+              onToggleTheme={()=> setTheme(t=> t==='dark'?'light':'dark')}
+              theme={theme}
+            />
           </div>
+        </div>
+
+        <div className="flex">
+          <Finance_Sidebar collapsed={collapsed} />
+          <main className="w-full flex-1">
+            <Outlet />
+          </main>
         </div>
       </div>
     </div>

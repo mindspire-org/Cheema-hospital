@@ -114,3 +114,33 @@ export async function postProcedureSessionAccrual(args: { sessionId: string; dat
   const memo = args.memo || `Procedure session${args.procedureName? `: ${args.procedureName}`: ''}`
   return await AestheticFinanceJournal.create({ dateIso: args.dateIso || todayIso(), refType: 'aesthetic_procedure_session', refId: args.sessionId, memo, lines })
 }
+
+export async function postProcedurePaymentJournal(args: { tokenId: string; dateIso: string; amount: number; procedureSessionId: string; doctorId?: string; patientName?: string; mrn?: string; procedureName?: string; paidMethod?: 'Cash'|'Bank'|'AR' }){
+  // Idempotent per token (each token should post procedure payment at most once unless reversed)
+  const lastPay: any = await AestheticFinanceJournal.findOne({ refType: 'aesthetic_procedure_payment', refId: args.tokenId }).sort({ createdAt: -1 }).lean()
+  const lastRev: any = await AestheticFinanceJournal.findOne({ refType: 'aesthetic_procedure_payment_reversal', refId: args.tokenId }).sort({ createdAt: -1 }).lean()
+  if (lastPay && (!lastRev || new Date(lastPay.createdAt) > new Date(lastRev.createdAt))) return lastPay as any
+
+  const amt = round2(Math.max(0, Number(args.amount || 0)))
+  if (!amt) return null
+  const doc: any = args.doctorId ? await AestheticDoctor.findById(args.doctorId).lean() : null
+  const percent = (doc as any)?.shares ?? 100
+  const share = round2(amt * (Math.max(Number(percent)||0,0) / 100))
+  const debitAccount = args.paidMethod === 'Bank' ? 'BANK' : (args.paidMethod === 'Cash' ? 'CASH' : 'AR')
+  const tags: any = { }
+  if (args.doctorId) tags.doctorId = String(args.doctorId)
+  if (args.tokenId) tags.tokenId = String(args.tokenId)
+  if (args.procedureSessionId) tags.sessionId = String(args.procedureSessionId)
+  if (args.patientName) tags.patientName = args.patientName
+  if (args.mrn) tags.mrn = args.mrn
+  if (args.procedureName) tags.procedureName = args.procedureName
+
+  const lines: JournalLine[] = [
+    { account: debitAccount, debit: amt, tags: { ...tags } },
+    { account: 'PROCEDURE_REVENUE', credit: amt, tags: { ...tags } },
+    { account: 'DOCTOR_SHARE_EXPENSE', debit: share, tags: { ...tags } },
+    { account: 'DOCTOR_PAYABLE', credit: share, tags: { ...tags } },
+  ]
+  const memo = `Procedure payment${args.procedureName ? `: ${args.procedureName}` : ''}`
+  return await AestheticFinanceJournal.create({ dateIso: args.dateIso || todayIso(), refType: 'aesthetic_procedure_payment', refId: args.tokenId, memo, lines })
+}

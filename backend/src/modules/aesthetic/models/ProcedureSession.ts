@@ -19,6 +19,7 @@ const ProcedureSessionSchema = new Schema({
   payments: { type: [{ amount: Number, method: String, dateIso: String, note: String, by: String }], default: [] },
 
   status: { type: String, default: 'planned' }, // planned|done|cancelled
+  procedureCompleted: { type: Boolean, default: false },
   nextVisitDate: { type: String },
   notes: { type: String },
 
@@ -46,6 +47,7 @@ export type ProcedureSessionDoc = {
   balance?: number
   payments?: Array<{ amount: number; method?: string; dateIso: string; note?: string; by?: string }>
   status?: 'planned'|'done'|'cancelled'
+  procedureCompleted?: boolean
   nextVisitDate?: string
   notes?: string
   beforeImages?: string[]

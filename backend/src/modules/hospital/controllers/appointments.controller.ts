@@ -79,7 +79,7 @@ export async function create(req: Request, res: Response){
     // Ensure slot free (consider both appointments and tokens)
     const clashAppt = await HospitalAppointment.findOne({ scheduleId: sched._id, slotNo, status: { $in: ['booked','confirmed','checked-in'] } }).lean()
     if (clashAppt) return res.status(409).json({ error: 'Selected slot already booked' })
-    const clashTok = await HospitalToken.findOne({ scheduleId: sched._id, slotNo }).lean()
+    const clashTok = await HospitalToken.findOne({ scheduleId: sched._id, slotNo, status: { $nin: ['returned','cancelled'] } }).lean()
     if (clashTok) return res.status(409).json({ error: 'Selected slot already booked' })
 
     // Resolve patient link (do not create MRN for new)
@@ -185,7 +185,7 @@ export async function convertToToken(req: Request, res: Response){
     }
 
     // Ensure slot not already taken by a token
-    const clashTok = await HospitalToken.findOne({ scheduleId: appt.scheduleId, slotNo: appt.slotNo }).lean()
+    const clashTok = await HospitalToken.findOne({ scheduleId: appt.scheduleId, slotNo: appt.slotNo, status: { $nin: ['returned','cancelled'] } }).lean()
     if (clashTok) return res.status(409).json({ error: 'Slot already has a token' })
 
     // Load schedule, doctor, department

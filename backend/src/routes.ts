@@ -7,6 +7,7 @@ import receptionRouter from './modules/reception/routes'
 import adminRouter from './modules/admin/routes'
 import corporateRouter from './modules/corporate/routes'
 import aestheticRouter from './modules/aesthetic/routes'
+import biometricRouter from './modules/biometric/routes'
 
 const router = Router()
 
@@ -18,5 +19,6 @@ router.use('/reception', receptionRouter)
 router.use('/admin', adminRouter)
 router.use('/corporate', corporateRouter)
 router.use('/aesthetic', aestheticRouter)
+router.use('/biometric', biometricRouter)
 
 export default router

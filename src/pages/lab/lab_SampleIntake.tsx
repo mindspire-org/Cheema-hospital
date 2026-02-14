@@ -147,8 +147,13 @@ export default function Lab_Orders() {
   }
 
   function onPhoneChange(e: any){
+    const prevDigits = String(phone || '').replace(/\D+/g,'')
     const v = String(e?.target?.value ?? '')
+    const nextDigits = v.replace(/\D+/g,'')
     setPhone(v)
+    if (mrNumber && prevDigits !== nextDigits) {
+      setMrNumber('')
+    }
     skipLookupKeyRef.current = null; lastPromptKeyRef.current = null
     ;(window as any)._labPhoneDeb && clearTimeout((window as any)._labPhoneDeb)
     const digits = v.replace(/\D+/g,'')
@@ -279,33 +284,31 @@ export default function Lab_Orders() {
 
   const onSubmit = async () => {
     if (!fullName.trim() || !phone.trim() || selectedTestIds.length === 0) return
-    // 1) Find or create patient (MRN logic)
+    // 1) Find or create patient (phone-driven)
     let patient: any | null = null
     try {
-      if (mrNumber.trim()) {
-        const r = await labApi.getPatientByMrn(mrNumber.trim())
-        patient = r?.patient || null
-      } else {
-        let resp = await labApi.findOrCreatePatient({
-          fullName: fullName.trim(),
-          guardianName: guardianName.trim() || undefined,
-          phone: phone.trim() || undefined,
-          cnic: cnic.trim() || undefined,
-          gender: gender || undefined,
-          address: address.trim() || undefined,
-          age: age.trim() || undefined,
-          guardianRel: guardianRelation || undefined,
-        })
-        if (resp?.needSelection && Array.isArray(resp.matches)){
-          const lines = resp.matches.map((m: any, i: number)=> `${i+1}. ${m.mrn||'-'} — ${m.fullName}${m.fatherName? ' s/o '+m.fatherName : ''} ${m.phone? ' — '+m.phone : ''}`)
-          const pick = prompt(`Multiple patients found. Enter number to select:\n${lines.join('\n')}`)
-          const idx = Math.max(0, Math.min(resp.matches.length-1, (parseInt(String(pick||'1'))||1)-1))
-          const sel = resp.matches[idx]
-          resp = await labApi.findOrCreatePatient({ fullName: fullName.trim(), guardianName: guardianName.trim() || undefined, selectId: sel._id })
-        }
-        patient = resp?.patient || null
+      let resp = await labApi.findOrCreatePatient({
+        fullName: fullName.trim(),
+        guardianName: guardianName.trim() || undefined,
+        phone: phone.trim() || undefined,
+        cnic: cnic.trim() || undefined,
+        gender: gender || undefined,
+        address: address.trim() || undefined,
+        age: age.trim() || undefined,
+        guardianRel: guardianRelation || undefined,
+      })
+      if (resp?.needSelection && Array.isArray(resp.matches) && resp.matches.length) {
+        const lines = resp.matches.map((m:any, idx:number)=> `${idx+1}) ${m.fullName||''} (${m.mrn||''}) ${m.fatherName?`/ ${m.fatherName}`:''}`)
+        const pick = prompt(`Multiple patients found. Enter number to select:\n${lines.join('\n')}`)
+        const idx = Math.max(0, Math.min(resp.matches.length-1, (parseInt(String(pick||'1'))||1)-1))
+        const sel = resp.matches[idx]
+        resp = await labApi.findOrCreatePatient({ fullName: fullName.trim(), guardianName: guardianName.trim() || undefined, selectId: sel._id })
       }
-    } catch (e){ console.error(e); alert('Failed to resolve patient'); return }
+      patient = resp?.patient || null
+    } catch (e: any) {
+      alert(e?.message || 'Failed to find/create patient')
+      return
+    }
 
     if (!patient){ alert('Patient not resolved'); return }
     // update MR number display

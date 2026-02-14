@@ -27,6 +27,7 @@ export type DiagnosticPrintArgs = {
   reportedAt?: string
   patient: any
   value: string
+  images?: string[]
   referringConsultant?: string
 }
 

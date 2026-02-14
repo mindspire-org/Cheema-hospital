@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { AestheticFinanceJournal } from '../models/FinanceJournal'
 import { createDoctorPayout, manualDoctorEarning, computeDoctorBalance, reverseJournalById } from './finance_ledger'
 import { AuditLog } from '../models/AuditLog'
+import { AestheticDoctor } from '../models/Doctor'
 
 function getActor(req: Request){
   const u: any = (req as any).user || {}
@@ -54,90 +55,145 @@ export async function listDoctorEarnings(req: Request, res: Response){
   const to = String((req.query as any)?.to || '')
   const matchDate = (from && to) ? { dateIso: { $gte: from, $lte: to } } : {}
   const matchDoctor = doctorId ? { 'lines.tags.doctorId': String(doctorId) } : {}
+
   const rows = await AestheticFinanceJournal.aggregate([
     { $match: { ...matchDate } },
-    { $addFields: { allLines: '$lines' } },
-    { $unwind: '$lines' },
-    { $match: { 'lines.account': 'DOCTOR_PAYABLE', 'lines.credit': { $gt: 0 }, ...(doctorId? matchDoctor : {}) } },
-    { $lookup: {
-        from: 'aesthetic_finance_journals',
-        let: { origId: '$_id' },
-        pipeline: [ { $match: { $expr: { $eq: ['$refId', { $toString: '$$origId' }] } } } ],
-        as: 'reversals'
-      }
-    },
-    { $addFields: { _revCount: { $size: '$reversals' } } },
-    { $match: { _revCount: { $eq: 0 } } },
-    { $addFields: { _tidStr: { $toString: '$lines.tags.tokenId' } } },
-    { $lookup: {
-        from: 'aesthetic_finance_journals',
-        let: { tidStr: '$_tidStr' },
-        pipeline: [
-          { $match: { $expr: { $and: [ { $eq: ['$refType','opd_token_reversal'] }, { $eq: ['$refId','$$tidStr'] } ] } } },
-          { $sort: { createdAt: -1 } },
-          { $limit: 1 },
+    {
+      $facet: {
+        earnings: [
+          { $addFields: { allLines: '$lines' } },
+          { $unwind: '$lines' },
+          { $match: { 'lines.account': 'DOCTOR_PAYABLE', 'lines.credit': { $gt: 0 }, ...(doctorId? matchDoctor : {}) } },
+          { $lookup: {
+              from: 'aesthetic_finance_journals',
+              let: { origId: '$_id' },
+              pipeline: [ { $match: { $expr: { $eq: ['$refId', { $toString: '$$origId' }] } } } ],
+              as: 'reversals'
+            }
+          },
+          { $addFields: { _revCount: { $size: '$reversals' } } },
+          { $match: { _revCount: { $eq: 0 } } },
+          { $addFields: { _tidStr: { $toString: '$lines.tags.tokenId' } } },
+          { $lookup: {
+              from: 'aesthetic_finance_journals',
+              let: { tidStr: '$_tidStr' },
+              pipeline: [
+                { $match: { $expr: { $and: [ { $eq: ['$refType','opd_token_reversal'] }, { $eq: ['$refId','$$tidStr'] } ] } } },
+                { $sort: { createdAt: -1 } },
+                { $limit: 1 },
+              ],
+              as: 'revForToken'
+            }
+          },
+          { $addFields: { _lastRev: { $arrayElemAt: ['$revForToken', 0] } } },
+          { $addFields: { _keep: { $or: [ { $eq: ['$_lastRev', null] }, { $gt: ['$createdAt', '$_lastRev.createdAt'] } ] } } },
+          { $match: { _keep: { $eq: true } } },
+          { $lookup: {
+              from: 'aesthetic_tokens',
+              let: { tidStr: '$_tidStr' },
+              pipeline: [
+                { $match: { $expr: { $eq: [ { $toString: '$_id' }, '$$tidStr' ] } } },
+                { $project: { patientName: 1, mrNumber: 1, number: 1, fee: 1, discount: 1 } }
+              ],
+              as: 'tok'
+            }
+          },
+          { $addFields: { token: { $arrayElemAt: ['$tok', 0] } } },
+          { $addFields: {
+              revenueLine: {
+                $arrayElemAt: [
+                  { $filter: { input: '$allLines', as: 'l', cond: { $in: ['$$l.account', ['OPD_REVENUE','IPD_REVENUE','PROCEDURE_REVENUE']] } } },
+                  0
+                ]
+              }
+            }
+          },
+          { $project: {
+              _id: 1, dateIso: 1, createdAt: 1, refType: 1, refId: 1, memo: 1, line: '$lines', revenueAccount: '$revenueLine.account',
+              revenueAmount: { $ifNull: ['$revenueLine.credit', 0] },
+              patientName: { $ifNull: ['$token.patientName', '$lines.tags.patientName'] },
+              mrn: { $ifNull: ['$token.mrNumber', '$lines.tags.mrn'] },
+              tokenNo: '$token.number',
+              fee: '$token.fee',
+              discount: '$token.discount'
+            }
+          },
         ],
-        as: 'revForToken'
+        payouts: [
+          { $match: { refType: 'doctor_payout', ...(doctorId ? { refId: String(doctorId) } : {}) } },
+          { $addFields: { allLines: '$lines' } },
+          { $unwind: '$lines' },
+          { $match: { 'lines.account': 'DOCTOR_PAYABLE', 'lines.debit': { $gt: 0 } } },
+          { $lookup: {
+              from: 'aesthetic_finance_journals',
+              let: { origId: '$_id' },
+              pipeline: [ { $match: { $expr: { $eq: ['$refId', { $toString: '$$origId' }] } } } ],
+              as: 'reversals'
+            }
+          },
+          { $addFields: { _revCount: { $size: '$reversals' } } },
+          { $match: { _revCount: { $eq: 0 } } },
+          { $project: { _id: 1, dateIso: 1, createdAt: 1, refType: 1, refId: 1, memo: 1, line: '$lines' } },
+        ]
       }
     },
-    { $addFields: { _lastRev: { $arrayElemAt: ['$revForToken', 0] } } },
-    { $addFields: { _keep: { $or: [ { $eq: ['$_lastRev', null] }, { $gt: ['$createdAt', '$_lastRev.createdAt'] } ] } } },
-    { $match: { _keep: { $eq: true } } },
-    { $lookup: {
-        from: 'aesthetic_tokens',
-        let: { tidStr: '$_tidStr' },
-        pipeline: [
-          { $match: { $expr: { $eq: [ { $toString: '$_id' }, '$$tidStr' ] } } },
-          { $project: { patientName: 1, mrNumber: 1, number: 1, fee: 1, discount: 1 } }
-        ],
-        as: 'tok'
-      }
-    },
-    { $addFields: { token: { $arrayElemAt: ['$tok', 0] } } },
-    { $addFields: {
-        revenueLine: {
-          $arrayElemAt: [
-            { $filter: { input: '$allLines', as: 'l', cond: { $in: ['$$l.account', ['OPD_REVENUE','IPD_REVENUE','PROCEDURE_REVENUE']] } } },
-            0
-          ]
-        }
-      }
-    },
-    { $project: { 
-        _id: 1, dateIso: 1, refType: 1, refId: 1, memo: 1, line: '$lines', revenueAccount: '$revenueLine.account',
-        patientName: { $ifNull: ['$token.patientName', '$lines.tags.patientName'] },
-        mrn: { $ifNull: ['$token.mrNumber', '$lines.tags.mrn'] },
-        tokenNo: '$token.number',
-        fee: '$token.fee',
-        discount: '$token.discount'
-      } 
-    },
-    { $sort: { dateIso: -1, _id: -1 } },
+    { $project: { all: { $concatArrays: ['$earnings', '$payouts'] } } },
+    { $unwind: '$all' },
+    { $replaceRoot: { newRoot: '$all' } },
+    { $sort: { dateIso: -1, createdAt: -1, _id: -1 } },
     { $limit: 500 },
   ])
+
+  const doctorIds = Array.from(new Set(
+    rows
+      .map((r: any) => (r?.line?.tags?.doctorId ? String(r.line.tags.doctorId) : (r?.refType === 'doctor_payout' ? String(r.refId) : '')))
+      .filter(Boolean)
+  ))
+  const doctorNameById = new Map<string, string>()
+  try {
+    const docs: any[] = doctorIds.length ? await AestheticDoctor.find({ _id: { $in: doctorIds } }).select('name').lean() : []
+    for (const d of docs) doctorNameById.set(String(d._id), String(d.name || 'Doctor'))
+  } catch {}
+
   const items = rows.map((r: any) => {
-    const doctorAmount = Number(r.line?.credit || 0)
-    const isOpd = r.refType === 'opd_token'
-    const fee = Number(r?.fee ?? 0)
-    const discount = Number(r?.discount ?? 0)
-    const gross = (Number.isFinite(fee) ? fee : 0) + (Number.isFinite(discount) ? discount : 0)
-    const sharePercent = (isOpd && fee > 0) ? ((doctorAmount / fee) * 100) : null
+    const isPayout = r.refType === 'doctor_payout'
+    const doctorAmount = isPayout ? (-1 * Number(r.line?.debit || 0)) : Number(r.line?.credit || 0)
+
+    const doctorId = r.line?.tags?.doctorId ? String(r.line.tags.doctorId) : (isPayout ? String(r.refId) : undefined)
+    const revenueAmount = Math.max(0, Number(r?.revenueAmount || 0))
+    const gross = !isPayout ? revenueAmount : 0
+    const discount = !isPayout ? 0 : undefined
+    const fee = !isPayout ? revenueAmount : undefined
+    const sharePercent = (!isPayout && gross > 0) ? ((Math.abs(Number(doctorAmount || 0)) / gross) * 100) : null
+
+    const type = isPayout
+      ? 'Payout'
+      : (r.refType === 'opd_token'
+          ? 'OPD'
+          : (r.revenueAccount === 'PROCEDURE_REVENUE'
+              ? 'Procedure'
+              : (r.revenueAccount === 'IPD_REVENUE' ? 'IPD' : 'OPD')))
+
+    const doctorName = doctorId ? (doctorNameById.get(doctorId) || 'Doctor') : 'Doctor'
     return ({
       id: String(r._id),
       dateIso: r.dateIso,
-      doctorId: r.line?.tags?.doctorId ? String(r.line.tags.doctorId) : undefined,
-      type: r.refType === 'opd_token' ? 'OPD' : (r.revenueAccount === 'PROCEDURE_REVENUE' ? 'Procedure' : (r.revenueAccount === 'IPD_REVENUE' ? 'IPD' : 'OPD')),
+      doctorId,
+      doctorName,
+      type,
       amount: doctorAmount,
       memo: r.memo,
       patientName: r.patientName,
       mrn: r.mrn,
       tokenNo: r.tokenNo,
-      fee: Number.isFinite(fee) ? fee : undefined,
-      discount: Number.isFinite(discount) ? discount : undefined,
-      gross: Number.isFinite(gross) ? gross : undefined,
-      sharePercent: sharePercent != null ? sharePercent : null,
+      fee: (!isPayout && Number.isFinite(fee)) ? fee : undefined,
+      discount: (!isPayout && Number.isFinite(discount)) ? discount : undefined,
+      gross: (!isPayout && Number.isFinite(gross)) ? gross : undefined,
+      sharePercent: (!isPayout && sharePercent != null) ? sharePercent : null,
+      datetimeIso: r.createdAt,
     })
   })
+
   res.json({ earnings: items })
 }
 

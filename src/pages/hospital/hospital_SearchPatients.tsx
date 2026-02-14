@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { hospitalApi, labApi, diagnosticApi, api as coreApi } from '../../utils/api'
+import { hospitalApi, labApi, diagnosticApi, aestheticApi, api as coreApi } from '../../utils/api'
 import { getSavedPrescriptionPdfTemplate, previewPrescriptionPdf } from '../../utils/prescriptionPdf'
 import { printUltrasoundReport } from '../../components/diagnostic/diagnostic_UltrasoundGeneric'
 import { printCTScanReport } from '../../components/diagnostic/diagnostic_CTScan'
@@ -21,7 +21,7 @@ export default function Hospital_SearchPatients() {
   const [loading, setLoading] = useState(false)
   const [patients, setPatients] = useState<any[]>([])
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
-  const [details, setDetails] = useState<Record<string, { pres?: any[]; lab?: any[]; diag?: any[]; ipd?: any[]; loading?: boolean }>>({})
+  const [details, setDetails] = useState<Record<string, { pres?: any[]; lab?: any[]; diag?: any[]; ipd?: any[]; aesthetic?: any[]; loading?: boolean }>>({})
   const [busy, setBusy] = useState<{ pres?: string; lab?: string; diag?: string }>({})
 
   const update = (k: keyof typeof form, v: string) => setForm(prev => ({ ...prev, [k]: v }))
@@ -209,11 +209,12 @@ export default function Hospital_SearchPatients() {
   async function loadDetails(mrn: string, patientId?: string){
     setDetails(prev => ({ ...prev, [mrn]: { ...(prev[mrn]||{}), loading: true } }))
     try {
-      const [presRes, ordersRes, diagOrdersRes, ipdRes] = await Promise.all([
+      const [presRes, ordersRes, diagOrdersRes, ipdRes, aestRes] = await Promise.all([
         hospitalApi.listPrescriptions({ patientMrn: mrn, page: 1, limit: 50 }) as any,
         labApi.listOrders({ q: mrn, limit: 50 }) as any,
         diagnosticApi.listOrders({ q: mrn, limit: 50 }) as any,
         hospitalApi.listIPDAdmissions(patientId ? { patientId, page: 1, limit: 50 } : { q: mrn, page: 1, limit: 50 }) as any,
+        aestheticApi.listProcedureSessions({ patientMrn: mrn, page: 1, limit: 100 }) as any,
       ])
       const pres: any[] = (presRes?.prescriptions || []).map((p: any) => ({ id: p._id || p.id, createdAt: p.createdAt, diagnosis: p.diagnosis, doctor: p.encounterId?.doctorId?.name || '-', items: p.items || [] }))
       const orders: any[] = (ordersRes?.items || [])
@@ -264,9 +265,15 @@ export default function Hospital_SearchPatients() {
           return { id: encId, admissionNo: a.admissionNo, startAt: a.startAt, endAt: a.endAt, status: a.status, forms: {} }
         }
       })) : []
-      setDetails(prev => ({ ...prev, [mrn]: { pres, lab, diag, ipd, loading: false } }))
+
+      const aestheticItemsRaw: any[] = Array.isArray(aestRes?.items) ? aestRes.items : []
+      const aestheticItems = [...aestheticItemsRaw]
+        .filter(x => String(x?.patientMrn || '') === String(mrn))
+        .sort((a,b)=> new Date(b?.date || 0).getTime() - new Date(a?.date || 0).getTime())
+
+      setDetails(prev => ({ ...prev, [mrn]: { pres, lab, diag, ipd, aesthetic: aestheticItems, loading: false } }))
     } catch {
-      setDetails(prev => ({ ...prev, [mrn]: { pres: [], lab: [], diag: [], ipd: [], loading: false } }))
+      setDetails(prev => ({ ...prev, [mrn]: { pres: [], lab: [], diag: [], ipd: [], aesthetic: [], loading: false } }))
     }
   }
 
@@ -455,6 +462,30 @@ export default function Hospital_SearchPatients() {
                         ))}
                         {(!details[String(p.mrn||'')]?.loading) && (details[String(p.mrn||'')]?.diag||[]).length===0 && (
                           <div className="p-3 text-xs text-slate-500">No diagnostic records found</div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-slate-200 md:col-span-3">
+                      <div className="border-b border-slate-200 px-3 py-2 text-sm font-medium">Aesthetic History</div>
+                      <div className="divide-y divide-slate-100">
+                        {(details[String(p.mrn||'')]?.loading) && <div className="p-3 text-xs text-slate-500">Loading...</div>}
+                        {(!details[String(p.mrn||'')]?.loading) && (details[String(p.mrn||'')]?.aesthetic||[]).map((s: any, i: number) => (
+                          <div key={String(s._id||s.id||i)} className="px-3 py-2 text-xs">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="font-medium text-slate-800">{String(s.procedureName || s.procedureId || 'Procedure')}</div>
+                              <div className="text-slate-600">{s.date ? new Date(s.date).toLocaleString() : ''}</div>
+                            </div>
+                            <div className="mt-1 grid gap-2 sm:grid-cols-4">
+                              <div className="text-slate-600">Paid: <span className="font-medium text-slate-800">Rs {Math.round(Number(s.paid||0)).toLocaleString()}</span></div>
+                              <div className="text-slate-600">Balance: <span className={`font-medium ${Number(s.balance||0)>0?'text-rose-700':'text-slate-800'}`}>Rs {Math.round(Number(s.balance||0)).toLocaleString()}</span></div>
+                              <div className="text-slate-600">Status: <span className="font-medium text-slate-800">{String(s.status||'planned')}</span></div>
+                              <div className="text-slate-600">Next: <span className="font-medium text-slate-800">{s.nextVisitDate ? new Date(s.nextVisitDate).toLocaleString() : '-'}</span></div>
+                            </div>
+                          </div>
+                        ))}
+                        {(!details[String(p.mrn||'')]?.loading) && (details[String(p.mrn||'')]?.aesthetic||[]).length===0 && (
+                          <div className="p-3 text-xs text-slate-500">No aesthetic history found</div>
                         )}
                       </div>
                     </div>

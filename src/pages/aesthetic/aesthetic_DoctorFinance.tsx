@@ -89,13 +89,11 @@ export default function Hospital_DoctorFinance() {
 
   useEffect(() => {
     setDoctors(readDoctors())
+    loadDoctors()
   }, [tick])
 
   useEffect(() => {
-    if (!doctors.length || addOpen) {
-      loadDoctors()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (addOpen) loadDoctors()
   }, [addOpen])
 
   async function loadDoctors(){
@@ -135,23 +133,55 @@ export default function Hospital_DoctorFinance() {
       const items: any[] = res?.earnings || []
       if (!Array.isArray(items)) return
       const mapDoc = (id?: string)=> doctors.find(d=>d.id===id)?.name || 'Doctor'
-      const newOnes: Entry[] = items.map((r:any)=> ({
-        id: `be:${r.id}`,
-        datetime: `${r.dateIso}T00:00:00`,
-        doctorId: r.doctorId,
-        doctorName: mapDoc(r.doctorId),
-        type: (r.type || 'OPD') as EntryType,
-        tokenId: r.tokenId,
-        tokenNo: r.tokenNo || (typeof r.memo === 'string' ? (r.memo.match(/#(\d+)/)?.[1] || undefined) : undefined),
-        patient: r.patientName,
-        mrNumber: r.mrn,
-        description: r.memo,
-        gross: Number.isFinite(Number(r.gross)) ? Number(r.gross) : undefined,
-        discount: Number.isFinite(Number(r.discount)) ? Number(r.discount) : undefined,
-        sharePercent: r.sharePercent!=null ? Number(r.sharePercent) : undefined,
-        doctorAmount: Number(r.amount||0),
-        ref: undefined,
-      }))
+      const newOnes: Entry[] = items
+        .map((r:any)=> {
+          const rawType = String(r.type || 'OPD') as EntryType
+          const amount = Number(r.amount || 0)
+          const sharePercent = r.sharePercent!=null ? Number(r.sharePercent) : undefined
+
+          // Backend sometimes returns only `amount` for manual entries.
+          // For display purposes, derive gross/discount so the first columns aren't 0.
+          let gross: number | undefined = Number.isFinite(Number(r.gross)) ? Number(r.gross) : undefined
+          let discount: number | undefined = Number.isFinite(Number(r.discount)) ? Number(r.discount) : undefined
+          let useShare: number | undefined = sharePercent
+
+          if (gross == null && amount !== 0 && String(rawType).toLowerCase() !== 'payout'){
+            if (useShare == null) useShare = 100
+            if (useShare > 0 && useShare < 100) gross = Math.round((amount * 100 / useShare) * 100) / 100
+            else gross = Math.abs(amount)
+          }
+          if (discount == null && gross != null) discount = 0
+
+          const dt = String(r.datetimeIso || r.dateIso || '')
+          const datetime = dt ? (dt.includes('T') ? dt : `${dt}T00:00:00`) : new Date().toISOString()
+
+          return {
+            id: `be:${r.id}`,
+            datetime,
+            doctorId: r.doctorId,
+            doctorName: String(r.doctorName || '') || mapDoc(r.doctorId),
+            type: rawType,
+            tokenId: r.tokenId,
+            tokenNo: r.tokenNo || (typeof r.memo === 'string' ? (r.memo.match(/#(\d+)/)?.[1] || undefined) : undefined),
+            patient: r.patientName,
+            mrNumber: r.mrn,
+            description: r.memo,
+            gross,
+            discount,
+            sharePercent: useShare,
+            doctorAmount: Number(amount||0),
+            ref: undefined,
+          }
+        })
+        .filter((e: Entry)=> {
+          const g = Number(e.gross || 0)
+          const d = Number(e.discount || 0)
+          const amt = Number(e.doctorAmount || 0)
+          const hasIdentity = Boolean(e.doctorId) || Boolean(e.doctorName) || Boolean(e.patient) || Boolean(e.mrNumber) || Boolean(e.tokenId) || Boolean(e.tokenNo) || Boolean(e.description)
+          if (!hasIdentity) return false
+          if (g === 0 && d === 0 && amt === 0) return false
+          return true
+        })
       setEntries(newOnes)
     } catch {}
   }
@@ -178,8 +208,9 @@ export default function Hospital_DoctorFinance() {
   const summary = useMemo(() => {
     let gross = 0, discount = 0, payable = 0, doctorShare = 0
     for (const e of filtered) {
-      const g = Number(e.gross||0)
-      const d = Number(e.discount||0)
+      const isPayout = String(e.type||'').toLowerCase() === 'payout'
+      const g = isPayout ? 0 : Number(e.gross||0)
+      const d = isPayout ? 0 : Number(e.discount||0)
       gross += g
       discount += d
       payable += Math.max(0, g - d)
@@ -335,7 +366,7 @@ export default function Hospital_DoctorFinance() {
                   <td className="px-4 py-2">{e.tokenNo || '-'}</td>
                   <td className="px-4 py-2">{Number(e.gross||0).toFixed(2)}</td>
                   <td className="px-4 py-2">{Number(e.discount||0).toFixed(2)}</td>
-                  <td className="px-4 py-2">{(Math.max(0, Number(e.gross||0) - Number(e.discount||0))).toFixed(2)}</td>
+                  <td className="px-4 py-2">{String(e.type||'').toLowerCase()==='payout' ? '-' : (Math.max(0, Number(e.gross||0) - Number(e.discount||0))).toFixed(2)}</td>
                   <td className="px-4 py-2">{e.sharePercent!=null ? `${Number(e.sharePercent).toFixed(2)}%` : '-'}</td>
                   <td className={`px-4 py-2 ${e.doctorAmount < 0 ? 'text-rose-600' : 'text-emerald-700'} font-medium`}>Rs {e.doctorAmount.toFixed(2)}</td>
                   <td className="px-4 py-2">

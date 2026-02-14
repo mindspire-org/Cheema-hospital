@@ -90,6 +90,7 @@ r.delete('/procedure-sessions/:id', ProcedureSessions.remove)
 r.post('/procedure-sessions/:id/payments', ProcedureSessions.addPayment)
 r.get('/procedure-sessions/:id/payments', ProcedureSessions.getPayments)
 r.put('/procedure-sessions/:id/next-visit', ProcedureSessions.setNextVisit)
+r.post('/procedure-sessions/complete-procedure', ProcedureSessions.completeProcedure)
 
 // Tokens (OPD tokens for Aesthetic)
 r.get('/tokens', Tokens.list)

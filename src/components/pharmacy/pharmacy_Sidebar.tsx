@@ -117,55 +117,48 @@ export default function Pharmacy_Sidebar({ collapsed }: Props) {
   }, [role])
   return (
     <aside
-      className={`hidden md:flex ${collapsed ? 'md:w-16' : 'md:w-72'} md:flex-col md:border-r md:text-white overflow-x-hidden`}
-      style={{ background: 'linear-gradient(180deg, var(--navy) 0%, var(--navy-700) 100%)', borderColor: 'rgba(255,255,255,0.12)' }}
+      className={`hidden md:flex ${collapsed ? 'md:w-16' : 'md:w-72'} md:flex-none md:shrink-0 md:sticky md:top-14 md:h-[calc(100dvh-3.5rem)] md:flex-col md:border-r`}
+      style={{ background: '#ffffff', borderColor: '#e2e8f0' }}
     >
-      <div className="h-16 px-4 flex items-center border-b" style={{ borderColor: 'rgba(255,255,255,0.12)' }}>
-        <div className="flex items-center gap-2">
-          <div className={`grid h-9 w-9 place-items-center rounded-xl bg-sky-600/20 ring-sky-500/40 text-sky-300 ring-1`}>
-            <span className="text-sm font-bold">{collapsed ? 'P' : 'Rx'}</span>
-          </div>
-          {!collapsed && (
-            <div className="leading-tight">
-              <div className={`text-sm font-semibold text-white`}>Pharmacy</div>
-              <div className={`text-[11px] text-white/80`}>HealthSpire</div>
-            </div>
-          )}
-        </div>
-        {!collapsed && (
-          <div
-            className={`ml-auto rounded-full px-2 py-1 text-[11px] font-semibold ring-1 bg-emerald-500/15 text-emerald-300 ring-emerald-400/40`}
-          >
-            Online
-          </div>
-        )}
-      </div>
-      <nav className="flex-1 overflow-y-auto p-3 space-y-1">
+      <nav className={`flex-1 overflow-y-auto ${collapsed ? 'p-2' : 'p-3'} space-y-1`}>
         {items.map(item => {
           const Icon = item.Icon
           return (
             <NavLink
               key={item.to}
               to={item.to}
-              className={({ isActive }) =>
-                `flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium ${
-                  isActive ? 'bg-white/10 text-white' : 'text-white/80 hover:bg-white/5'
-                }`
-              }
+              title={collapsed ? item.label : undefined}
+              style={({ isActive }) => (isActive ? ({ background: 'linear-gradient(180deg, var(--navy) 0%, var(--navy-700) 100%)' } as any) : undefined)}
+              className={({ isActive }) => {
+                const base = collapsed
+                  ? 'rounded-md p-2 text-sm font-medium flex items-center justify-center'
+                  : 'rounded-md px-3 py-2 text-sm font-medium flex items-center gap-2'
+                const active = isActive
+                  ? 'text-white'
+                  : 'text-slate-700 hover:bg-slate-50 hover:text-slate-900'
+                return `${base} ${active}`
+              }}
               end={item.end}
             >
-              <Icon className="h-4 w-4 shrink-0" />
-              {!collapsed && <span className="truncate">{item.label}</span>}
+              {({ isActive }) => (
+                <>
+                  <Icon className={collapsed ? (isActive ? 'h-5 w-5 text-white' : 'h-5 w-5 text-slate-700') : (isActive ? 'h-4 w-4 text-white' : 'h-4 w-4 text-slate-700')} />
+                  {!collapsed && <span className="truncate">{item.label}</span>}
+                </>
+              )}
             </NavLink>
           )
         })}
       </nav>
-      <div className="p-3">
+      <div className={collapsed ? 'p-2' : 'p-3'}>
         <button
           type="button"
           onClick={handleLogout}
-          className="w-full inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium"
-          style={{ backgroundColor: 'rgba(255,255,255,0.08)', color: '#ffffff', border: '1px solid rgba(255,255,255,0.14)' }}
+          title={collapsed ? 'Logout' : undefined}
+          className={collapsed ? 'w-full inline-flex items-center justify-center rounded-md p-2 text-sm font-medium' : 'w-full inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium'}
+          style={{ backgroundColor: '#ffffff', color: 'var(--navy)', border: '1px solid var(--navy)' }}
+          onMouseEnter={e => { try { ;(e.currentTarget as any).style.backgroundColor = 'rgba(15,45,92,0.06)' } catch {} }}
+          onMouseLeave={e => { try { ;(e.currentTarget as any).style.backgroundColor = '#ffffff' } catch {} }}
         >
           Logout
         </button>

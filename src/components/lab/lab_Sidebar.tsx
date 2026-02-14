@@ -10,7 +10,7 @@ import {
 type Item = { to: string; label: string; end?: boolean; icon: any }
 const nav: Item[] = [
   { to: '/lab', label: 'Dashboard', end: true, icon: LayoutDashboard },
-  { to: '/lab/orders', label: 'Sample Intake', icon: ClipboardPlus },
+  { to: '/lab/orders', label: 'Token Generation', icon: ClipboardPlus },
   { to: '/lab/tracking', label: 'Sample Tracking', icon: ListChecks },
   { to: '/lab/tests', label: 'Test Catalog', icon: FlaskConical },
   { to: '/lab/results', label: 'Result Entry', icon: FileText },
@@ -92,24 +92,10 @@ export default function Lab_Sidebar({ collapsed = false }: { collapsed?: boolean
   }, [role])
   return (
     <aside
-      className={`hidden md:flex ${collapsed ? 'md:w-16' : 'md:w-72'} md:flex-col md:border-r md:text-white`}
-      style={{ background: 'linear-gradient(180deg, var(--navy) 0%, var(--navy-700) 100%)', borderColor: 'rgba(255,255,255,0.12)' }}
+      className={`hidden md:flex ${collapsed ? 'md:w-16' : 'md:w-72'} md:flex-none md:shrink-0 md:sticky md:top-14 md:h-[calc(100dvh-3.5rem)] md:flex-col md:border-r`}
+      style={{ background: '#ffffff', borderColor: '#e2e8f0' }}
     >
-      <div className="h-16 px-4 flex items-center border-b" style={{ borderColor: 'rgba(255,255,255,0.12)' }}>
-        <div className="flex items-center gap-2">
-          <div className="grid h-9 w-9 place-items-center rounded-xl bg-slate-100 ring-1 ring-slate-200 dark:bg-white/10 dark:ring-white/10">
-            <span className="text-sm font-bold text-slate-900 dark:text-white">{collapsed ? 'L' : 'Lab'}</span>
-          </div>
-          {!collapsed && (
-            <div className="leading-tight">
-              <div className="text-sm font-semibold text-slate-900 dark:text-white">Laboratory</div>
-              <div className="text-[11px] text-slate-500 dark:text-white/70">HealthSpire</div>
-            </div>
-          )}
-        </div>
-        {!collapsed && <div className="ml-auto text-xs opacity-80">online</div>}
-      </div>
-      <nav className="flex-1 overflow-y-auto p-3 space-y-1">
+      <nav className={`flex-1 overflow-y-auto ${collapsed ? 'p-2' : 'p-3'} space-y-1`}>
         {items.map(item => {
           const Icon = item.icon
           return (
@@ -117,25 +103,37 @@ export default function Lab_Sidebar({ collapsed = false }: { collapsed?: boolean
               key={item.to}
               to={item.to}
               title={collapsed ? item.label : undefined}
-              className={({ isActive }) =>
-                `group rounded-xl px-3 py-2 text-sm font-medium flex items-center transition ${collapsed ? 'justify-center gap-0' : 'gap-2'} ${
-                  isActive ? 'bg-white/10 text-white' : 'text-white/80 hover:bg-white/5'
-                }`
-              }
+              style={({ isActive }) => (isActive ? ({ background: 'linear-gradient(180deg, var(--navy) 0%, var(--navy-700) 100%)' } as any) : undefined)}
+              className={({ isActive }) => {
+                const base = collapsed
+                  ? 'rounded-md p-2 text-sm font-medium flex items-center justify-center'
+                  : 'rounded-md px-3 py-2 text-sm font-medium flex items-center gap-2'
+                const active = isActive
+                  ? 'text-white'
+                  : 'text-slate-700 hover:bg-slate-50 hover:text-slate-900'
+                return `${base} ${active}`
+              }}
               end={item.end}
             >
-              <Icon className="h-4 w-4 shrink-0" />
-              {!collapsed && <span>{item.label}</span>}
+              {({ isActive }) => (
+                <>
+                  <Icon className={collapsed ? (isActive ? 'h-5 w-5 text-white' : 'h-5 w-5 text-slate-700') : (isActive ? 'h-4 w-4 text-white' : 'h-4 w-4 text-slate-700')} />
+                  {!collapsed && <span>{item.label}</span>}
+                </>
+              )}
             </NavLink>
           )
         })}
       </nav>
-      <div className="p-3">
+      <div className={collapsed ? 'p-2' : 'p-3'}>
         <button
           type="button"
           onClick={logout}
-          className="w-full inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold"
-          style={{ backgroundColor: 'rgba(255,255,255,0.08)', color: '#ffffff', border: '1px solid rgba(255,255,255,0.14)' }}
+          title={collapsed ? 'Logout' : undefined}
+          className={collapsed ? 'w-full inline-flex items-center justify-center rounded-md p-2 text-sm font-medium' : 'w-full inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium'}
+          style={{ backgroundColor: '#ffffff', color: 'var(--navy)', border: '1px solid var(--navy)' }}
+          onMouseEnter={e => { try { ;(e.currentTarget as any).style.backgroundColor = 'rgba(15,45,92,0.06)' } catch {} }}
+          onMouseLeave={e => { try { ;(e.currentTarget as any).style.backgroundColor = '#ffffff' } catch {} }}
         >Logout</button>
       </div>
     </aside>

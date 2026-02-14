@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { labApi, aestheticApi } from '../../utils/api'
 import Aesthetic_TokenSlip, { type TokenSlipData } from '../../components/aesthetic/aesthetic_TokenSlip'
 
-export default function Aesthetic_TokenGeneratorPage(){
+export default function Aesthetic_TokenGeneratorPage() {
   const [phone, setPhone] = useState('')
   const [patientName, setPatientName] = useState('')
   const [mrNumber, setMrNumber] = useState('')
@@ -13,7 +13,7 @@ export default function Aesthetic_TokenGeneratorPage(){
   const [guardianName, setGuardianName] = useState('')
   const [cnic, setCnic] = useState('')
   const [doctorId, setDoctorId] = useState('')
-  const [apptDate, setApptDate] = useState(()=> new Date().toISOString().slice(0,10))
+  const [apptDate, setApptDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [consultationFee, setConsultationFee] = useState('')
   const [discount, setDiscount] = useState('0')
   const phoneRef = useRef<HTMLInputElement>(null)
@@ -29,16 +29,17 @@ export default function Aesthetic_TokenGeneratorPage(){
   const phoneSuggestQueryRef = useRef<string>('')
   // Optional: create a procedure session along with token
   const [createSession, setCreateSession] = useState(false)
-  const [catalog, setCatalog] = useState<Array<{ _id:string; name:string; basePrice?:number; package?:{ sessionsCount?:number; intervalDays?:number } }>>([])
+  const [catalog, setCatalog] = useState<Array<{ _id: string; name: string; basePrice?: number; package?: { sessionsCount?: number; intervalDays?: number } }>>([])
   const [procId, setProcId] = useState('')
   const [procPrice, setProcPrice] = useState('')
   const [procDiscount, setProcDiscount] = useState('0')
   const [procPaid, setProcPaid] = useState('0')
+  const [procDoctorId, setProcDoctorId] = useState('')
   const [doctors, setDoctors] = useState<Array<{ id: string; name: string; specialty?: string; fee?: number; shares?: number }>>([])
   const [showSlip, setShowSlip] = useState(false)
   const [slipData, setSlipData] = useState<TokenSlipData | null>(null)
 
-  const finalFee = useMemo(()=> {
+  const finalFee = useMemo(() => {
     const fee = parseFloat(consultationFee || '0')
     const off = parseFloat(discount || '0')
     const f = Math.max(fee - off, 0)
@@ -47,21 +48,21 @@ export default function Aesthetic_TokenGeneratorPage(){
 
   const [toast, setToast] = useState<string | null>(null)
   // Load doctors from Aesthetic backend
-  useEffect(()=>{
+  useEffect(() => {
     let cancelled = false
-    ;(async()=>{
-      try {
-        const res: any = await aestheticApi.listDoctors({ limit: 500 })
-        const items: any[] = (res?.doctors || res || []) as any[]
-        const mapped = items.map(d=> ({ id: String(d._id||d.id), name: String(d.name||''), specialty: d.specialty || '', fee: Number(d.fee||0), shares: Number(d.shares||0) }))
-        if (!cancelled) setDoctors(mapped)
-      } catch { if (!cancelled) setDoctors([]) }
-    })()
-    return ()=>{ cancelled = true }
+      ; (async () => {
+        try {
+          const res: any = await aestheticApi.listDoctors({ limit: 500 })
+          const items: any[] = (res?.doctors || res || []) as any[]
+          const mapped = items.map(d => ({ id: String(d._id || d.id), name: String(d.name || ''), specialty: d.specialty || '', fee: Number(d.fee || 0), shares: Number(d.shares || 0) }))
+          if (!cancelled) setDoctors(mapped)
+        } catch { if (!cancelled) setDoctors([]) }
+      })()
+    return () => { cancelled = true }
   }, [])
 
   // Optional: prefill consultation fee when doctor is chosen and fee not set
-  useEffect(()=>{
+  useEffect(() => {
     if (!doctorId) return
     if (consultationFee && consultationFee.trim() !== '') return
     const d = doctors.find(x => x.id === doctorId)
@@ -79,36 +80,36 @@ export default function Aesthetic_TokenGeneratorPage(){
 
   // Token sequence from backend
   const [nextNumber, setNextNumber] = useState<number>(1)
-  useEffect(()=>{
+  useEffect(() => {
     let cancelled = false
-    ;(async()=>{
-      try{
-        const r: any = await aestheticApi.nextTokenNumber()
-        if (!cancelled) setNextNumber(Number(r?.next || 1))
-      } catch {}
-    })()
-    return ()=>{ cancelled = true }
+      ; (async () => {
+        try {
+          const r: any = await aestheticApi.nextTokenNumber()
+          if (!cancelled) setNextNumber(Number(r?.next || 1))
+        } catch { }
+      })()
+    return () => { cancelled = true }
   }, [consultationFee, discount, doctorId, patientName])
 
   // Load procedure catalog for optional session creation
-  useEffect(()=>{
+  useEffect(() => {
     let cancelled = false
-    ;(async()=>{
-      try {
-        const res: any = await aestheticApi.listProcedureCatalog({ limit: 200 })
-        if (!cancelled) setCatalog(res.items || [])
-      } catch {}
-    })()
-    return ()=>{ cancelled = true }
+      ; (async () => {
+        try {
+          const res: any = await aestheticApi.listProcedureCatalog({ limit: 200 })
+          if (!cancelled) setCatalog(res.items || [])
+        } catch { }
+      })()
+    return () => { cancelled = true }
   }, [])
 
-  function normName(s: string){ return String(s||'').trim().toLowerCase().replace(/\s+/g,' ') }
+  function normName(s: string) { return String(s || '').trim().toLowerCase().replace(/\s+/g, ' ') }
 
-  async function lookupExistingByPhoneAndName(){
-    const digits = (phone||'').replace(/\D+/g,'')
-    const nameEntered = (patientName||'').trim()
+  async function lookupExistingByPhoneAndName() {
+    const digits = (phone || '').replace(/\D+/g, '')
+    const nameEntered = (patientName || '').trim()
     if (!digits || !nameEntered) return
-    try{
+    try {
       const key = `${digits}|${normName(nameEntered)}`
       if (skipLookupKeyRef.current === key || lastPromptKeyRef.current === key) return
       const r: any = await labApi.searchPatients({ phone: digits, limit: 10 })
@@ -118,32 +119,32 @@ export default function Aesthetic_TokenGeneratorPage(){
       if (!p) return
       const summary = [
         `Found existing patient. Apply details?`,
-        `MRN: ${p.mrn||'-'}`,
-        `Name: ${p.fullName||'-'}`,
-        `Phone: ${p.phoneNormalized||digits}`,
-        `Age: ${p.age ?? (age?.trim()||'-')}`,
-        p.gender? `Gender: ${p.gender}` : null,
-        p.address? `Address: ${p.address}` : null,
-        p.fatherName? `Guardian: ${p.fatherName}` : null,
-        `Guardian Relation: ${p.guardianRel || (guardianRelation||'-')}`,
-        p.cnicNormalized? `CNIC: ${p.cnicNormalized}` : null,
+        `MRN: ${p.mrn || '-'}`,
+        `Name: ${p.fullName || '-'}`,
+        `Phone: ${p.phoneNormalized || digits}`,
+        `Age: ${p.age ?? (age?.trim() || '-')}`,
+        p.gender ? `Gender: ${p.gender}` : null,
+        p.address ? `Address: ${p.address}` : null,
+        p.fatherName ? `Guardian: ${p.fatherName}` : null,
+        `Guardian Relation: ${p.guardianRel || (guardianRelation || '-')}`,
+        p.cnicNormalized ? `CNIC: ${p.cnicNormalized}` : null,
       ].filter(Boolean).join('\n')
-      setTimeout(()=> { lastPromptKeyRef.current = key; setConfirmPatient({ summary, patient: p, key }) }, 0)
-    } catch {}
+      setTimeout(() => { lastPromptKeyRef.current = key; setConfirmPatient({ summary, patient: p, key }) }, 0)
+    } catch { }
   }
 
-  async function autoFillPatientByPhone(phoneNumber: string){
-    const digits = (phoneNumber||'').replace(/\D+/g,'')
+  async function autoFillPatientByPhone(phoneNumber: string) {
+    const digits = (phoneNumber || '').replace(/\D+/g, '')
     if (!digits || digits.length < 10) return
-    try{
+    try {
       const r: any = await labApi.searchPatients({ phone: digits, limit: 10 })
       const list: any[] = Array.isArray(r?.patients) ? r.patients : []
-      if (list.length > 1){
+      if (list.length > 1) {
         setPhonePatients(list)
         setShowPhonePicker(true)
         setToast(`${list.length} patients found - select one`)
-        setTimeout(()=> setToast(null), 2000)
-      } else if (list.length === 1){
+        setTimeout(() => setToast(null), 2000)
+      } else if (list.length === 1) {
         const p = list[0]
         setMrNumber(p.mrn || mrNumber)
         setPatientName(p.fullName || patientName)
@@ -155,34 +156,34 @@ export default function Aesthetic_TokenGeneratorPage(){
         setPhone(p.phoneNormalized || phone)
         setCnic(p.cnicNormalized || cnic)
         setToast('Patient data automatically filled')
-        setTimeout(()=> setToast(null), 2000)
+        setTimeout(() => setToast(null), 2000)
       } else {
         setToast('New patient - you can create under this phone')
-        setTimeout(()=> setToast(null), 2000)
+        setTimeout(() => setToast(null), 2000)
       }
-    } catch {}
+    } catch { }
   }
 
-  function onPhoneChange(e: React.ChangeEvent<HTMLInputElement>){
+  function onPhoneChange(e: React.ChangeEvent<HTMLInputElement>) {
     const v = e.target.value
     setPhone(v)
-    ;(window as any)._labPhoneDeb && clearTimeout((window as any)._labPhoneDeb)
-    const digits = (v||'').replace(/\D+/g,'')
+      ; (window as any)._labPhoneDeb && clearTimeout((window as any)._labPhoneDeb)
+    const digits = (v || '').replace(/\D+/g, '')
     // Incremental suggestions after 3+ digits
     if ((window as any)._aestPhoneSuggestDeb) clearTimeout((window as any)._aestPhoneSuggestDeb)
-    if (digits.length >= 3){
-      ;(window as any)._aestPhoneSuggestDeb = setTimeout(()=> runPhoneSuggestLookup(digits), 250)
+    if (digits.length >= 3) {
+      ; (window as any)._aestPhoneSuggestDeb = setTimeout(() => runPhoneSuggestLookup(digits), 250)
     } else {
       setPhoneSuggestItems([])
       setPhoneSuggestOpen(false)
     }
-    if (digits.length >= 10){
-      ;(window as any)._labPhoneDeb = setTimeout(()=> autoFillPatientByPhone(v), 500)
+    if (digits.length >= 10) {
+      ; (window as any)._labPhoneDeb = setTimeout(() => autoFillPatientByPhone(v), 500)
     }
   }
 
-  async function runPhoneSuggestLookup(digits: string){
-    try{
+  async function runPhoneSuggestLookup(digits: string) {
+    try {
       phoneSuggestQueryRef.current = digits
       const r: any = await labApi.searchPatients({ phone: digits, limit: 8 })
       const list: any[] = Array.isArray(r?.patients) ? r.patients : []
@@ -195,26 +196,26 @@ export default function Aesthetic_TokenGeneratorPage(){
     }
   }
 
-  async function onPhoneBlur(){ if (patientName.trim()) await lookupExistingByPhoneAndName() }
-  async function onNameBlur(){ if (phone.trim()) await lookupExistingByPhoneAndName() }
+  async function onPhoneBlur() { if (patientName.trim()) await lookupExistingByPhoneAndName() }
+  async function onNameBlur() { if (phone.trim()) await lookupExistingByPhoneAndName() }
 
-  async function generateToken(e: React.FormEvent){
+  async function generateToken(e: React.FormEvent) {
     e.preventDefault()
     // Basic validation to ensure patient can be created in Lab
     const nameVal = patientName.trim()
     const phoneVal = phone.trim()
-    if (!nameVal){ setToast('Enter patient name'); setTimeout(()=> setToast(null), 2000); return }
-    if (!phoneVal){ setToast('Enter phone'); setTimeout(()=> setToast(null), 2000); return }
+    if (!nameVal) { setToast('Enter patient name'); setTimeout(() => setToast(null), 2000); return }
+    if (!phoneVal) { setToast('Enter phone'); setTimeout(() => setToast(null), 2000); return }
     // Determine billing amounts: if creating a procedure session and a procedure is selected,
     // use the procedure price/discount; otherwise, use consultation fee/discount.
-    const selectedProc = (createSession && procId) ? catalog.find(c => String(c._id)===String(procId)) : undefined
+    const selectedProc = (createSession && procId) ? catalog.find(c => String(c._id) === String(procId)) : undefined
     const isProcedureBilling = !!(createSession && procId)
     const fee = isProcedureBilling
       ? Number(procPrice || selectedProc?.basePrice || 0)
-      : (parseFloat(consultationFee||'0') || 0)
+      : (parseFloat(consultationFee || '0') || 0)
     const off = isProcedureBilling
       ? Number(procDiscount || 0)
-      : (parseFloat(discount||'0') || 0)
+      : (parseFloat(discount || '0') || 0)
     const payable = Math.max(fee - off, 0)
     let pat: any = null
     try {
@@ -229,43 +230,44 @@ export default function Aesthetic_TokenGeneratorPage(){
         guardianRel: guardianRelation || undefined,
       })
       pat = pRes?.patient || null
-      if (!pat){ setToast('Could not create/find patient. Please verify details.'); setTimeout(()=> setToast(null), 2500); return }
+      if (!pat) { setToast('Could not create/find patient. Please verify details.'); setTimeout(() => setToast(null), 2500); return }
       // Ensure phone/cnic are persisted on the Lab patient regardless of matching branch chosen by backend
       try {
         const upd: any = await labApi.updatePatient(String(pat._id), { phone: phoneVal || undefined, cnic: cnic.trim() || undefined })
         if (upd?.patient) pat = upd.patient
-      } catch {}
+      } catch { }
     } catch {
       setToast('Failed to create/find patient. Check connectivity or permissions.');
-      setTimeout(()=> setToast(null), 2500);
+      setTimeout(() => setToast(null), 2500);
       return
     }
     // If procedure session is selected, create the session first to obtain its id
     let createdSessionId: string | undefined
     let createdSessionDefaults: { price?: number; discount?: number } = {}
-    if (createSession && procId && pat){
+    if (createSession && procId && pat) {
       try {
-        const selected = catalog.find(c => String(c._id)===String(procId))
+        const selected = catalog.find(c => String(c._id) === String(procId))
         const interval = Number(selected?.package?.intervalDays || 0)
-        const nextVisitDate = interval>0 ? new Date(Date.now() + interval*864e5).toISOString().slice(0,10) : undefined
+        const nextVisitDate = interval > 0 ? new Date(Date.now() + interval * 864e5).toISOString().slice(0, 10) : undefined
         const sessionResp: any = await aestheticApi.createProcedureSession({
-          labPatientId: String(pat._id||''),
-          patientMrn: String(pat.mrn||'') || undefined,
-          patientName: String(pat.fullName||'') || undefined,
-          phone: String(pat.phoneNormalized||'') || undefined,
+          labPatientId: String(pat._id || ''),
+          patientMrn: String(pat.mrn || '') || undefined,
+          patientName: String(pat.fullName || '') || undefined,
+          phone: String(pat.phoneNormalized || '') || undefined,
           procedureId: procId,
           procedureName: selected?.name,
           date: new Date().toISOString(),
-          price: Number(procPrice||selected?.basePrice||0),
-          discount: Number(procDiscount||0),
+          doctorId: procDoctorId || undefined,
+          price: Number(procPrice || selected?.basePrice || 0),
+          discount: Number(procDiscount || 0),
           paid: 0,
           status: 'planned',
           nextVisitDate,
         })
         const created = (sessionResp && sessionResp._id) ? sessionResp : (sessionResp?.doc || sessionResp)
         createdSessionId = String(created?._id || '') || undefined
-        createdSessionDefaults = { price: Number(created?.price||0), discount: Number(created?.discount||0) }
-      } catch {}
+        createdSessionDefaults = { price: Number(created?.price || 0), discount: Number(created?.discount || 0) }
+      } catch { }
     }
 
     const res: any = await aestheticApi.createToken({
@@ -284,14 +286,14 @@ export default function Aesthetic_TokenGeneratorPage(){
       // For non-procedure: fallback to consultation fee/discount
       fee: createdSessionDefaults.price != null ? createdSessionDefaults.price : fee,
       discount: createdSessionDefaults.discount != null ? createdSessionDefaults.discount : off,
-      payable: createdSessionId ? Number(procPaid||0) : payable,
+      payable: createdSessionId ? Number(procPaid || 0) : payable,
       // Link to session and record today's deposit if a session was created
       procedureSessionId: createdSessionId,
-      depositToday: createdSessionId ? Number(procPaid||0) : undefined,
+      depositToday: createdSessionId ? Number(procPaid || 0) : undefined,
       status: 'queued',
     })
     const rec = res?.token
-    setToast(`Generated token #${rec?.number ?? ''}${pat?.mrn? ` • MRN ${pat.mrn}`:''}`)
+    setToast(`Generated token #${rec?.number ?? ''}${pat?.mrn ? ` • MRN ${pat.mrn}` : ''}`)
     try {
       const docName = doctors.find(d => String(d.id) === String(doctorId))?.name || '-'
       const slip: TokenSlipData = {
@@ -316,12 +318,12 @@ export default function Aesthetic_TokenGeneratorPage(){
       }
       setSlipData(slip)
       setShowSlip(true)
-    } catch {}
-    setTimeout(()=> setToast(null), 2000)
+    } catch { }
+    setTimeout(() => setToast(null), 2000)
     setPhone(''); setPatientName(''); setMrNumber(''); setAge(''); setGender(''); setGuardianRelation(''); setGuardianName(''); setCnic(''); setAddress(''); setDoctorId(''); setConsultationFee(''); setDiscount('0');
-    setCreateSession(false); setProcId(''); setProcPrice(''); setProcDiscount('0'); setProcPaid('0')
+    setCreateSession(false); setProcId(''); setProcDoctorId(''); setProcPrice(''); setProcDiscount('0'); setProcPaid('0')
     // refresh next number
-    try { const r: any = await aestheticApi.nextTokenNumber(); setNextNumber(Number(r?.next || 1)) } catch {}
+    try { const r: any = await aestheticApi.nextTokenNumber(); setNextNumber(Number(r?.next || 1)) } catch { }
   }
 
   return (
@@ -338,7 +340,7 @@ export default function Aesthetic_TokenGeneratorPage(){
                   <input
                     ref={phoneRef}
                     onBlur={onPhoneBlur}
-                    onFocus={()=>{ if (phoneSuggestItems.length>0) setPhoneSuggestOpen(true) }}
+                    onFocus={() => { if (phoneSuggestItems.length > 0) setPhoneSuggestOpen(true) }}
                     className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                     placeholder="Type phone to search"
                     value={phone}
@@ -349,11 +351,11 @@ export default function Aesthetic_TokenGeneratorPage(){
                       {phoneSuggestItems.length === 0 ? (
                         <div className="px-3 py-2 text-sm text-slate-500">No results</div>
                       ) : (
-                        phoneSuggestItems.map((p:any, idx:number) => (
+                        phoneSuggestItems.map((p: any, idx: number) => (
                           <button
                             type="button"
                             key={p._id || idx}
-                            onClick={()=>{
+                            onClick={() => {
                               setMrNumber(p.mrn || mrNumber)
                               setPatientName(p.fullName || patientName)
                               setGuardianName(p.fatherName || guardianName)
@@ -379,19 +381,19 @@ export default function Aesthetic_TokenGeneratorPage(){
               </div>
               <div className="md:col-span-2">
                 <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Patient Name</label>
-                <input ref={nameRef} onBlur={onNameBlur} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" placeholder="Full Name" value={patientName} onChange={e=>setPatientName(e.target.value)} />
+                <input ref={nameRef} onBlur={onNameBlur} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" placeholder="Full Name" value={patientName} onChange={e => setPatientName(e.target.value)} />
               </div>
               <div className="md:col-span-2">
                 <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Search by MR Number</label>
-                <input className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" placeholder="Enter MR# (e.g., MR-15)" value={mrNumber} onChange={e=>setMrNumber(e.target.value)} />
+                <input className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" placeholder="Enter MR# (e.g., MR-15)" value={mrNumber} onChange={e => setMrNumber(e.target.value)} />
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Age</label>
-                <input className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" placeholder="e.g., 25" value={age} onChange={e=>setAge(e.target.value)} />
+                <input className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" placeholder="e.g., 25" value={age} onChange={e => setAge(e.target.value)} />
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Gender</label>
-                <select className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" value={gender} onChange={e=>setGender(e.target.value)}>
+                <select className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" value={gender} onChange={e => setGender(e.target.value)}>
                   <option value="">Select gender</option>
                   <option>Male</option>
                   <option>Female</option>
@@ -400,7 +402,7 @@ export default function Aesthetic_TokenGeneratorPage(){
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Guardian</label>
-                <select className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" value={guardianRelation} onChange={e=>setGuardianRelation(e.target.value)}>
+                <select className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" value={guardianRelation} onChange={e => setGuardianRelation(e.target.value)}>
                   <option value="">S/O or D/O</option>
                   <option value="S/O">S/O</option>
                   <option value="D/O">D/O</option>
@@ -408,15 +410,15 @@ export default function Aesthetic_TokenGeneratorPage(){
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Guardian Name</label>
-                <input className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" placeholder="Father/Guardian Name" value={guardianName} onChange={e=>setGuardianName(e.target.value)} />
+                <input className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" placeholder="Father/Guardian Name" value={guardianName} onChange={e => setGuardianName(e.target.value)} />
               </div>
               <div className="md:col-span-2">
                 <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">CNIC</label>
-                <input className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" placeholder="13-digit CNIC (no dashes)" maxLength={13} value={cnic} onChange={e=>setCnic(e.target.value)} />
+                <input className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" placeholder="13-digit CNIC (no dashes)" maxLength={13} value={cnic} onChange={e => setCnic(e.target.value)} />
               </div>
               <div className="md:col-span-2">
                 <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Address</label>
-                <textarea className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" rows={3} placeholder="Residential Address" value={address} onChange={e=>setAddress(e.target.value)} />
+                <textarea className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" rows={3} placeholder="Residential Address" value={address} onChange={e => setAddress(e.target.value)} />
               </div>
             </div>
           </div>
@@ -426,16 +428,16 @@ export default function Aesthetic_TokenGeneratorPage(){
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="md:col-span-2">
                 <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Doctor</label>
-                <select className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" value={doctorId} onChange={e=>setDoctorId(e.target.value)}>
+                <select className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" value={doctorId} onChange={e => setDoctorId(e.target.value)}>
                   <option value="">Select doctor</option>
                   {doctors.map(d => (
-                    <option key={d.id} value={d.id}>{d.name}{d.specialty? ` • ${d.specialty}`:''}</option>
+                    <option key={d.id} value={d.id}>{d.name}{d.specialty ? ` • ${d.specialty}` : ''}</option>
                   ))}
                 </select>
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Appointment Date</label>
-                <input type="date" value={apptDate} onChange={e=>setApptDate(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" />
+                <input type="date" value={apptDate} onChange={e => setApptDate(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" />
               </div>
             </div>
           </div>
@@ -446,11 +448,11 @@ export default function Aesthetic_TokenGeneratorPage(){
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Consultation Fee</label>
-              <input className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" placeholder="Fee" value={consultationFee} onChange={e=>setConsultationFee(e.target.value)} />
+              <input className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" placeholder="Fee" value={consultationFee} onChange={e => setConsultationFee(e.target.value)} />
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Discount</label>
-              <input className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" placeholder="0" value={discount} onChange={e=>setDiscount(e.target.value)} />
+              <input className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" placeholder="0" value={discount} onChange={e => setDiscount(e.target.value)} />
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Final Fee</label>
@@ -461,29 +463,38 @@ export default function Aesthetic_TokenGeneratorPage(){
 
         <section className="space-y-3">
           <div className="flex items-center gap-2">
-            <input id="create-session" type="checkbox" checked={createSession} onChange={e=>setCreateSession(e.target.checked)} />
+            <input id="create-session" type="checkbox" checked={createSession} onChange={e => setCreateSession(e.target.checked)} />
             <label htmlFor="create-session" className="text-sm">Create a procedure session for this visit</label>
           </div>
           {createSession && (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
               <div className="md:col-span-2">
                 <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Procedure</label>
-                <select value={procId} onChange={e=>{ setProcId(e.target.value); const sel = catalog.find(c=> String(c._id)===String(e.target.value)); setProcPrice(sel? String(sel.basePrice||'') : '') }} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
+                <select value={procId} onChange={e => { setProcId(e.target.value); const sel = catalog.find(c => String(c._id) === String(e.target.value)); setProcPrice(sel ? String(sel.basePrice || '') : '') }} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
                   <option value="">Select procedure</option>
-                  {catalog.map(c=> <option key={c._id} value={c._id}>{c.name}</option>)}
+                  {catalog.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
+                </select>
+              </div>
+              <div className="md:col-span-2">
+                <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Procedure Doctor</label>
+                <select value={procDoctorId} onChange={e => setProcDoctorId(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
+                  <option value="">Select doctor</option>
+                  {doctors.map(d => (
+                    <option key={d.id} value={d.id}>{d.name}{d.specialty ? ` • ${d.specialty}` : ''}</option>
+                  ))}
                 </select>
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Price</label>
-                <input value={procPrice} onChange={e=>setProcPrice(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                <input value={procPrice} onChange={e => setProcPrice(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Discount</label>
-                <input value={procDiscount} onChange={e=>setProcDiscount(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                <input value={procDiscount} onChange={e => setProcDiscount(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Paid</label>
-                <input value={procPaid} onChange={e=>setProcPaid(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                <input value={procPaid} onChange={e => setProcPaid(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
               </div>
             </div>
           )}
@@ -492,7 +503,7 @@ export default function Aesthetic_TokenGeneratorPage(){
         <div className="flex items-center justify-between">
           <div className="text-sm text-slate-600 dark:text-slate-400">Next Token: <span className="font-semibold">{nextNumber}</span></div>
           <div className="flex items-center gap-3">
-            <button type="reset" onClick={(e)=>{ e.preventDefault(); setPhone(''); setPatientName(''); setMrNumber(''); setAge(''); setGender(''); setGuardianRelation(''); setGuardianName(''); setCnic(''); setAddress(''); setDoctorId(''); setConsultationFee(''); setDiscount('0') }} className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800">Reset</button>
+            <button type="reset" onClick={(e) => { e.preventDefault(); setPhone(''); setPatientName(''); setMrNumber(''); setAge(''); setGender(''); setGuardianRelation(''); setGuardianName(''); setCnic(''); setAddress(''); setDoctorId(''); setConsultationFee(''); setDiscount('0') }} className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800">Reset</button>
             <button type="submit" className="rounded-md bg-fuchsia-700 px-4 py-2 text-sm font-medium text-white hover:bg-fuchsia-800">Generate Token</button>
           </div>
         </div>
@@ -502,7 +513,7 @@ export default function Aesthetic_TokenGeneratorPage(){
         <div className="fixed bottom-4 right-4 z-50 rounded-md bg-emerald-600 px-4 py-2 text-sm text-white shadow-lg">{toast}</div>
       )}
       {showSlip && slipData && (
-        <Aesthetic_TokenSlip open={showSlip} onClose={()=>setShowSlip(false)} data={slipData} autoPrint={true} />
+        <Aesthetic_TokenSlip open={showSlip} onClose={() => setShowSlip(false)} data={slipData} autoPrint={true} />
       )}
       {showPhonePicker && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -510,7 +521,7 @@ export default function Aesthetic_TokenGeneratorPage(){
             <div className="font-medium mb-2">Select Patient (Phone: {phone})</div>
             <div className="max-h-96 overflow-y-auto">
               {phonePatients.map((p, idx) => (
-                <button key={p._id || idx} onClick={()=>{
+                <button key={p._id || idx} onClick={() => {
                   setMrNumber(p.mrn || mrNumber)
                   setPatientName(p.fullName || patientName)
                   setGuardianName(p.fatherName || guardianName)
@@ -522,7 +533,7 @@ export default function Aesthetic_TokenGeneratorPage(){
                   setCnic(p.cnicNormalized || cnic)
                   setShowPhonePicker(false)
                   setToast('Patient selected')
-                  setTimeout(()=> setToast(null), 2000)
+                  setTimeout(() => setToast(null), 2000)
                 }} className="mb-2 w-full rounded-md border border-slate-200 p-3 text-left hover:bg-slate-50">
                   <div className="text-sm font-medium text-slate-800">{p.fullName || 'Unnamed'}</div>
                   <div className="text-xs text-slate-600">MRN: {p.mrn || '-'} • Age: {p.age || '-'} • {p.gender || '-'}</div>
@@ -531,7 +542,7 @@ export default function Aesthetic_TokenGeneratorPage(){
               ))}
             </div>
             <div className="mt-2 flex items-center justify-end gap-2">
-              <button onClick={()=>{ setShowPhonePicker(false); setToast('Create new patient under this phone'); setTimeout(()=> setToast(null), 2000) }} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm">Cancel</button>
+              <button onClick={() => { setShowPhonePicker(false); setToast('Create new patient under this phone'); setTimeout(() => setToast(null), 2000) }} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm">Cancel</button>
             </div>
           </div>
         </div>
@@ -544,11 +555,11 @@ export default function Aesthetic_TokenGeneratorPage(){
             <div className="flex items-center justify-end gap-2">
               <button
                 className="rounded-md border border-slate-300 px-3 py-1.5 text-sm"
-                onClick={()=>{ skipLookupKeyRef.current = confirmPatient.key; setConfirmPatient(null) }}
+                onClick={() => { skipLookupKeyRef.current = confirmPatient.key; setConfirmPatient(null) }}
               >Ignore</button>
               <button
                 className="rounded-md bg-fuchsia-700 px-3 py-1.5 text-sm text-white"
-                onClick={()=>{
+                onClick={() => {
                   const p = confirmPatient.patient
                   setMrNumber(p.mrn || mrNumber)
                   setPatientName(p.fullName || patientName)

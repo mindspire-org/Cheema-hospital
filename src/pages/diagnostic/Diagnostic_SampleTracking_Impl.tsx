@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Eye, Pencil, Printer, Trash2 } from 'lucide-react'
 import { diagnosticApi } from '../../utils/api'
 import Diagnostic_TokenSlip from '../../components/diagnostic/Diagnostic_TokenSlip'
 import Diagnostic_EditSampleDialog from '../../components/diagnostic/Diagnostic_EditSampleDialog'
@@ -21,8 +22,12 @@ type Order = {
 
 type Test = { id: string; name: string; price?: number }
 
-function formatDateTime(iso: string) {
-  const d = new Date(iso); return d.toLocaleDateString() + ', ' + d.toLocaleTimeString()
+function formatDate(iso: string) {
+  const d = new Date(iso); return d.toLocaleDateString()
+}
+
+function formatTime(iso: string) {
+  const d = new Date(iso); return d.toLocaleTimeString()
 }
 
 export default function Diagnostic_SampleTracking(){
@@ -75,7 +80,11 @@ export default function Diagnostic_SampleTracking(){
     }))
   }
   const setStatusForItem = async (orderId: string, testId: string, s: 'received'|'completed'|'returned') => {
-    try { await diagnosticApi.updateOrderItemTrack(orderId, testId, { status: s }) } catch {}
+    let ok = false
+    try {
+      await diagnosticApi.updateOrderItemTrack(orderId, testId, { status: s })
+      ok = true
+    } catch {}
     setOrders(prev => prev.map(o => {
       if (o.id !== orderId) return o
       const items = (o.items||[])
@@ -83,6 +92,11 @@ export default function Diagnostic_SampleTracking(){
       if (idx>=0){ const copy = items.slice(); copy[idx] = { ...copy[idx], status: s }; return { ...o, items: copy } }
       return { ...o, items: [ ...(o.items||[]), { testId, status: s } ] }
     }))
+
+    if (ok && s === 'completed') {
+      setNotice({ text: 'Marked completed. You can enter results in Result Entry.', kind: 'success' })
+      try { setTimeout(()=> setNotice(null), 2500) } catch {}
+    }
   }
   const requestDeleteItem = async (orderId: string, testId: string) => {
     if (!confirm('Delete this test from the order?')) return
@@ -109,6 +123,9 @@ export default function Diagnostic_SampleTracking(){
   // Print Slip
   const [slipOpen, setSlipOpen] = useState(false)
   const [slipData, setSlipData] = useState<DiagnosticTokenSlipData | null>(null)
+  // View Details Dialog
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const [detailsOrder, setDetailsOrder] = useState<Order | null>(null)
   // Edit Sample Dialog
   const [editOpen, setEditOpen] = useState(false)
   const [editOrder, setEditOrder] = useState<{ id: string; patient: any; tests: string[] } | null>(null)
@@ -145,27 +162,44 @@ export default function Diagnostic_SampleTracking(){
     setSlipData(data); setSlipOpen(true)
   }
 
+  const openDetails = (o: Order) => {
+    setDetailsOrder(o)
+    setDetailsOpen(true)
+  }
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 p-4 md:p-6">
       <div className="rounded-xl border border-slate-200 bg-white p-4">
         <div className="text-2xl font-bold text-slate-900">Sample Tracking</div>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <div className="min-w-[260px] flex-1">
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="min-w-0 w-full">
+            <label className="mb-1 block text-xs text-slate-500">Search</label>
             <input value={q} onChange={e=>{ setQ(e.target.value); setPage(1) }} placeholder="Search by token, patient, or test..." className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
           </div>
-          <div className="flex items-center gap-2 text-sm">
-            <input type="date" value={from} onChange={e=>{ setFrom(e.target.value); setPage(1) }} className="rounded-md border border-slate-300 px-2 py-1" />
-            <input type="date" value={to} onChange={e=>{ setTo(e.target.value); setPage(1) }} className="rounded-md border border-slate-300 px-2 py-1" />
+          <div className="min-w-0 w-full">
+            <label className="mb-1 block text-xs text-slate-500">From</label>
+            <input type="date" value={from} onChange={e=>{ setFrom(e.target.value); setPage(1) }} className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm" />
           </div>
-          <div className="flex items-center gap-1 text-sm">
-            <button onClick={()=>setStatus('all')} className={`rounded-md px-3 py-1.5 border ${status==='all'?'bg-slate-900 text-white border-slate-900':'border-slate-300 text-slate-700'}`}>All</button>
-            <button onClick={()=>setStatus('received')} className={`rounded-md px-3 py-1.5 border ${status==='received'?'bg-slate-900 text-white border-slate-900':'border-slate-300 text-slate-700'}`}>Received</button>
-            <button onClick={()=>setStatus('completed')} className={`rounded-md px-3 py-1.5 border ${status==='completed'?'bg-slate-900 text-white border-slate-900':'border-slate-300 text-slate-700'}`}>Completed</button>
-            <button onClick={()=>setStatus('returned')} className={`rounded-md px-3 py-1.5 border ${status==='returned'?'bg-slate-900 text-white border-slate-900':'border-slate-300 text-slate-700'}`}>Returned</button>
+          <div className="min-w-0 w-full">
+            <label className="mb-1 block text-xs text-slate-500">To</label>
+            <input type="date" value={to} onChange={e=>{ setTo(e.target.value); setPage(1) }} className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm" />
           </div>
-          <div className="ml-auto flex items-center gap-2 text-sm">
-            <span>Rows</span>
-            <select value={rows} onChange={e=>{ setRows(Number(e.target.value)); setPage(1) }} className="rounded-md border border-slate-300 px-2 py-1">
+          <div className="min-w-0 w-full">
+            <label className="mb-1 block text-xs text-slate-500">Status</label>
+            <select
+              value={status}
+              onChange={e => { setStatus(e.target.value as any); setPage(1) }}
+              className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
+            >
+              <option value="all">All</option>
+              <option value="received">Received</option>
+              <option value="completed">Completed</option>
+              <option value="returned">Returned</option>
+            </select>
+          </div>
+          <div className="min-w-0 w-full">
+            <label className="mb-1 block text-xs text-slate-500">Rows</label>
+            <select value={rows} onChange={e=>{ setRows(Number(e.target.value)); setPage(1) }} className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm">
               <option value={10}>10</option>
               <option value={20}>20</option>
               <option value={50}>50</option>
@@ -177,21 +211,19 @@ export default function Diagnostic_SampleTracking(){
         )}
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+      <div className="rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-sm">
           <thead className="border-b border-slate-200 bg-slate-50 text-left text-slate-600">
             <tr>
-              <th className="px-4 py-2">Date</th>
-              <th className="px-4 py-2">Patient</th>
-              <th className="px-4 py-2">Token No</th>
-              <th className="px-4 py-2">Test(s)</th>
-              <th className="px-4 py-2">MR No</th>
-              <th className="px-4 py-2">CNIC</th>
-              <th className="px-4 py-2">Father Name</th>
-              <th className="px-4 py-2">Phone</th>
-              <th className="px-4 py-2">Sample Time</th>
-              <th className="px-4 py-2">Status</th>
-              <th className="px-4 py-2">Actions</th>
+              <th className="px-2 py-2 lg:px-4">DateTime</th>
+              <th className="px-2 py-2 lg:px-4">Patient</th>
+              <th className="px-2 py-2 lg:px-4">Token No</th>
+              <th className="px-2 py-2 lg:px-4">Test(s)</th>
+              <th className="hidden px-2 py-2 lg:px-4 md:table-cell">MR No</th>
+              <th className="hidden px-2 py-2 lg:px-4 lg:table-cell">Phone</th>
+              <th className="hidden px-2 py-2 lg:px-4 sm:table-cell">Sample Time</th>
+              <th className="px-2 py-2 lg:px-4">Status</th>
+              <th className="px-2 py-2 lg:px-4">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -204,29 +236,61 @@ export default function Diagnostic_SampleTracking(){
                 const sampleTime = item?.sampleTime || o.sampleTime || ''
                 acc.push(
                   <tr key={`${o.id}-${tid}-${idx}`} className="border-b border-slate-100">
-                    <td className="px-4 py-2 whitespace-nowrap">{formatDateTime(o.createdAt)}</td>
-                    <td className="px-4 py-2 whitespace-nowrap">{o.patient.fullName}</td>
-                    <td className="px-4 py-2 whitespace-nowrap">{token}</td>
-                    <td className="px-4 py-2">{tname}</td>
-                    <td className="px-4 py-2 whitespace-nowrap">{o.patient.mrn || '-'}</td>
-                    <td className="px-4 py-2 whitespace-nowrap">{o.patient.cnic || '-'}</td>
-                    <td className="px-4 py-2 whitespace-nowrap">{o.patient.guardianName || '-'}</td>
-                    <td className="px-4 py-2 whitespace-nowrap">{o.patient.phone || '-'}</td>
-                    <td className="px-4 py-2 whitespace-nowrap">
+                    <td className="px-2 py-2 lg:px-4 whitespace-nowrap">
+                      <div className="leading-tight">
+                        <div>{formatDate(o.createdAt)}</div>
+                        <div className="text-xs text-slate-500">{formatTime(o.createdAt)}</div>
+                      </div>
+                    </td>
+                    <td className="px-2 py-2 lg:px-4 whitespace-nowrap">{o.patient.fullName}</td>
+                    <td className="px-2 py-2 lg:px-4 whitespace-nowrap">{token}</td>
+                    <td className="px-2 py-2 lg:px-4">{tname}</td>
+                    <td className="hidden px-2 py-2 lg:px-4 whitespace-nowrap md:table-cell">{o.patient.mrn || '-'}</td>
+                    <td className="hidden px-2 py-2 lg:px-4 whitespace-nowrap lg:table-cell">{o.patient.phone || '-'}</td>
+                    <td className="hidden px-2 py-2 lg:px-4 whitespace-nowrap sm:table-cell">
                       <input type="time" value={sampleTime} onChange={e=>setSampleTimeForItem(o.id, String(tid), e.target.value)} className="rounded-md border border-slate-300 px-2 py-1" />
                      </td>
-                    <td className="px-4 py-2 whitespace-nowrap">
+                    <td className="px-2 py-2 lg:px-4 whitespace-nowrap">
                       <select value={rowStatus} onChange={e=> setStatusForItem(o.id, String(tid), e.target.value as any)} className="rounded-md border border-slate-300 px-2 py-1 text-xs">
                         <option value="received">received</option>
                         <option value="completed">completed</option>
                         <option value="returned">returned</option>
                       </select>
                     </td>
-                    <td className="px-4 py-2 whitespace-nowrap">
-                      <div className="flex items-center gap-2">
-                        <button onClick={()=>printToken(o)} className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-slate-700 hover:bg-slate-50">Print Token</button>
-                        <button onClick={()=> openEdit(o)} className="rounded-md bg-violet-600 px-2 py-1 text-xs font-medium text-white hover:bg-violet-700">Edit Sample</button>
-                        <button onClick={()=>requestDeleteItem(o.id, String(tid))} className="inline-flex items-center gap-1 rounded-md bg-rose-600 px-2 py-1 text-xs font-medium text-white hover:bg-rose-700">Delete Test</button>
+                    <td className="px-2 py-2 lg:px-4 whitespace-nowrap">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          title="View Details"
+                          onClick={()=>openDetails(o)}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-300 text-slate-700 hover:bg-slate-50 sm:h-8 sm:w-8"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          title="Print Token"
+                          onClick={()=>printToken(o)}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-300 text-slate-700 hover:bg-slate-50 sm:h-8 sm:w-8"
+                        >
+                          <Printer className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          title="Edit Sample"
+                          onClick={()=> openEdit(o)}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-300 text-slate-700 hover:bg-slate-50 sm:h-8 sm:w-8"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          title="Delete Test"
+                          onClick={()=>requestDeleteItem(o.id, String(tid))}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-rose-300 text-rose-700 hover:bg-rose-50 sm:h-8 sm:w-8"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -252,6 +316,71 @@ export default function Diagnostic_SampleTracking(){
 
       {slipOpen && slipData && (
         <Diagnostic_TokenSlip open={slipOpen} onClose={()=>setSlipOpen(false)} data={slipData} />
+      )}
+      {detailsOpen && detailsOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-4">
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl bg-white shadow-2xl ring-1 ring-black/5">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-3">
+              <div>
+                <div className="text-base font-semibold text-slate-800">Order Details</div>
+                <div className="text-xs text-slate-500">Token: {detailsOrder.tokenNo || '-'} • {formatDate(detailsOrder.createdAt)} {formatTime(detailsOrder.createdAt)}</div>
+              </div>
+              <button onClick={()=>setDetailsOpen(false)} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm">Close</button>
+            </div>
+
+            <div className="space-y-4 p-5">
+              <section className="rounded-lg border border-slate-200 p-4">
+                <div className="text-sm font-semibold text-slate-800">Patient Details</div>
+                <div className="mt-2 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
+                  <div className="flex items-start justify-between gap-2"><div className="text-slate-500">Name</div><div className="text-right text-slate-800">{detailsOrder.patient?.fullName || '-'}</div></div>
+                  <div className="flex items-start justify-between gap-2"><div className="text-slate-500">Phone</div><div className="text-right text-slate-800">{detailsOrder.patient?.phone || '-'}</div></div>
+                  <div className="flex items-start justify-between gap-2"><div className="text-slate-500">MR No</div><div className="text-right text-slate-800">{detailsOrder.patient?.mrn || '-'}</div></div>
+                  <div className="flex items-start justify-between gap-2"><div className="text-slate-500">CNIC</div><div className="text-right text-slate-800">{(detailsOrder.patient as any)?.cnic || '-'}</div></div>
+                  <div className="flex items-start justify-between gap-2"><div className="text-slate-500">Guardian</div><div className="text-right text-slate-800">{(detailsOrder.patient as any)?.guardianName || (detailsOrder.patient as any)?.fatherName || '-'}</div></div>
+                </div>
+              </section>
+
+              <section className="rounded-lg border border-slate-200 p-4">
+                <div className="text-sm font-semibold text-slate-800">Token Details</div>
+                <div className="mt-2 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
+                  <div className="flex items-start justify-between gap-2"><div className="text-slate-500">Token No</div><div className="text-right font-semibold text-slate-900">{detailsOrder.tokenNo || '-'}</div></div>
+                  <div className="flex items-start justify-between gap-2"><div className="text-slate-500">Status</div><div className="text-right text-slate-800">{detailsOrder.status || '-'}</div></div>
+                  <div className="flex items-start justify-between gap-2"><div className="text-slate-500">Created</div><div className="text-right text-slate-800">{formatDate(detailsOrder.createdAt)} {formatTime(detailsOrder.createdAt)}</div></div>
+                  <div className="flex items-start justify-between gap-2"><div className="text-slate-500">Sample Time</div><div className="text-right text-slate-800">{detailsOrder.sampleTime || '-'}</div></div>
+                </div>
+              </section>
+
+              <section className="rounded-lg border border-slate-200 p-4">
+                <div className="text-sm font-semibold text-slate-800">Test Details</div>
+                <div className="mt-2 overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="text-left text-slate-500">
+                      <tr>
+                        <th className="py-2">Test</th>
+                        <th className="py-2">Sample Time</th>
+                        <th className="py-2">Reporting Time</th>
+                        <th className="py-2">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                      {(detailsOrder.tests || []).map((tid, i) => {
+                        const item = (detailsOrder.items || []).find(x => String(x.testId) === String(tid)) as any
+                        return (
+                          <tr key={`${detailsOrder.id}-${tid}-${i}`}>
+                            <td className="py-2 pr-3 text-slate-800">{testsMap[tid] || tid}</td>
+                            <td className="py-2 pr-3 text-slate-700">{item?.sampleTime || '-'}</td>
+                            <td className="py-2 pr-3 text-slate-700">{item?.reportingTime || '-'}</td>
+                            <td className="py-2 text-slate-700">{item?.status || detailsOrder.status || '-'}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
       )}
       {editOpen && editOrder && (
         <Diagnostic_EditSampleDialog

@@ -6,6 +6,7 @@ export const diagnosticSettingsUpdateSchema = z.object({
   address: z.string().optional(),
   email: z.string().optional(),
   reportFooter: z.string().optional(),
+  slipFooter: z.string().optional(),
   logoDataUrl: z.string().optional(),
   department: z.string().optional(),
   consultantName: z.string().optional(),

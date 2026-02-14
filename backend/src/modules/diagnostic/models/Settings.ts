@@ -6,6 +6,7 @@ const SettingsSchema = new Schema({
   address: { type: String, default: '' },
   email: { type: String, default: '' },
   reportFooter: { type: String, default: '' },
+  slipFooter: { type: String, default: '' },
   logoDataUrl: { type: String, default: '' },
   department: { type: String, default: '' },
   consultantName: { type: String, default: '' },
@@ -29,6 +30,7 @@ export type DiagnosticSettingsDoc = {
   address: string
   email: string
   reportFooter: string
+  slipFooter?: string
   logoDataUrl?: string
   department?: string
   consultantName?: string

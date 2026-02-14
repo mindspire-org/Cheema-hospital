@@ -28,14 +28,17 @@ export default function Diagnostic_Layout() {
   return (
     <div className={theme === 'dark' ? 'diagnostic-scope dark' : 'diagnostic-scope'}>
       <div className={shell}>
+        <div className="sticky top-0 z-20 w-full md:border-b" style={{ background: 'linear-gradient(180deg, var(--navy) 0%, var(--navy-700) 100%)', borderColor: 'rgba(255,255,255,0.12)' }}>
+          <div className="flex h-14">
+            <Diagnostic_Header variant="navy" onToggleSidebar={toggle} onToggleTheme={()=> setTheme(t=>t==='dark'?'light':'dark')} theme={theme} />
+          </div>
+        </div>
+
         <div className="flex">
           <Diagnostic_Sidebar collapsed={collapsed} />
-          <div className="flex min-h-dvh flex-1 flex-col">
-            <Diagnostic_Header onToggleSidebar={toggle} onToggleTheme={()=> setTheme(t=>t==='dark'?'light':'dark')} theme={theme} />
-            <main className="w-full flex-1 px-2 py-4">
-              <Outlet />
-            </main>
-          </div>
+          <main className="w-full flex-1">
+            <Outlet />
+          </main>
         </div>
       </div>
     </div>

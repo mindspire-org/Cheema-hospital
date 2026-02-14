@@ -26,14 +26,17 @@ export default function Doctor_Layout() {
   return (
     <div className={theme === 'dark' ? 'doctor-scope dark' : 'doctor-scope'}>
       <div className={shell}>
+        <div className="sticky top-0 z-20 w-full md:border-b" style={{ background: 'linear-gradient(180deg, var(--navy) 0%, var(--navy-700) 100%)', borderColor: 'rgba(255,255,255,0.12)' }}>
+          <div className="flex h-14">
+            <Doctor_Header onToggle={() => setCollapsed(c=>!c)} onToggleTheme={() => setTheme(t=>t==='dark'?'light':'dark')} theme={theme} variant="navy" />
+          </div>
+        </div>
+
         <div className="flex">
           <Doctor_Sidebar collapsed={collapsed} />
-          <div className="flex min-h-dvh flex-1 flex-col">
-            <Doctor_Header onToggle={() => setCollapsed(c=>!c)} onToggleTheme={() => setTheme(t=>t==='dark'?'light':'dark')} theme={theme} />
-            <main className="w-full flex-1 px-4 py-6 sm:px-6">
-              <Outlet />
-            </main>
-          </div>
+          <main className="w-full flex-1">
+            <Outlet />
+          </main>
         </div>
       </div>
     </div>

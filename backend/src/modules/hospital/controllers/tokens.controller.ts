@@ -11,7 +11,8 @@ import { LabPatient } from '../../lab/models/Patient'
 import { CorporateCompany } from '../../corporate/models/Company'
 import { nextGlobalMrn } from '../../../common/mrn'
 import { HospitalAuditLog } from '../models/AuditLog'
-import { postOpdTokenJournal, reverseJournalByRef } from './finance_ledger'
+import { postOpdTokenJournal, reverseJournalById, reverseJournalByRef } from './finance_ledger'
+import { FinanceJournal } from '../models/FinanceJournal'
 import { HospitalCashSession } from '../models/CashSession'
 import { resolveOPDPrice } from '../../corporate/utils/price'
 import { CorporateTransaction } from '../../corporate/models/Transaction'
@@ -162,7 +163,7 @@ export async function createOpd(req: Request, res: Response){
       const idx = computeSlotIndex(sched.startTime, sched.endTime, slotMinutes, apptStart)
       if (!idx) return res.status(400).json({ error: 'apptStart outside schedule or not aligned to slot' })
       // ensure slot free
-      const clash = await HospitalToken.findOne({ scheduleId: sched._id, slotNo: idx }).lean()
+      const clash = await HospitalToken.findOne({ scheduleId: sched._id, slotNo: idx, status: { $nin: ['returned','cancelled'] } }).lean()
       if (clash) return res.status(409).json({ error: 'Selected slot already booked' })
       const clashAppt = await HospitalAppointment.findOne({ scheduleId: sched._id, slotNo: idx, status: { $in: ['booked','confirmed','checked-in'] } }).lean()
       if (clashAppt) return res.status(409).json({ error: 'Selected slot already booked (appointment)' })
@@ -173,7 +174,7 @@ export async function createOpd(req: Request, res: Response){
     } else {
       // auto assign next free slot
       const totalSlots = Math.floor((toMin(sched.endTime) - toMin(sched.startTime)) / slotMinutes)
-      const taken = await HospitalToken.find({ scheduleId: sched._id }).select('slotNo').lean()
+      const taken = await HospitalToken.find({ scheduleId: sched._id, status: { $nin: ['returned','cancelled'] } }).select('slotNo').lean()
       const appts = await HospitalAppointment.find({ scheduleId: sched._id, status: { $in: ['booked','confirmed','checked-in'] } }).select('slotNo').lean()
       const used = new Set<number>([...((taken||[]).map((t:any)=> Number(t.slotNo||0))), ...((appts||[]).map((a:any)=> Number(a.slotNo||0)))])
       let idx = 0
@@ -357,11 +358,39 @@ export async function updateStatus(req: Request, res: Response){
   const id = req.params.id
   const status = String((req.body as any).status || '')
   if (!['queued','in-progress','completed','returned','cancelled'].includes(status)) return res.status(400).json({ error: 'Invalid status' })
+  const prev: any = await HospitalToken.findById(id).lean()
+  if (!prev) return res.status(404).json({ error: 'Token not found' })
+
+  // If un-returning (returned -> queued/in-progress/completed), ensure the original slot is still free.
+  if (prev.status === 'returned' && status !== 'returned' && status !== 'cancelled'){
+    const scheduleId = prev.scheduleId ? String(prev.scheduleId) : ''
+    const slotNo = prev.slotNo != null ? Number(prev.slotNo) : undefined
+    if (scheduleId && slotNo){
+      const clash = await HospitalToken.findOne({ _id: { $ne: prev._id }, scheduleId, slotNo, status: { $nin: ['returned','cancelled'] } }).lean()
+      if (clash) return res.status(409).json({ error: 'Cannot undo return: slot already booked' })
+      const clashAppt = await HospitalAppointment.findOne({ scheduleId, slotNo, status: { $in: ['booked','confirmed','checked-in'] } }).lean()
+      if (clashAppt) return res.status(409).json({ error: 'Cannot undo return: slot already booked (appointment)' })
+    }
+  }
+
   const tok = await HospitalToken.findByIdAndUpdate(id, { status }, { new: true })
   if (!tok) return res.status(404).json({ error: 'Token not found' })
-  // Finance: reverse accruals if token is returned or cancelled
+
+  // Finance: idempotent reversal/undo reversal
+  // - On first transition into returned/cancelled: reverse OPD journal once.
+  // - On undo return (returned -> active): reverse the latest reversal journal once.
   if (status === 'returned' || status === 'cancelled'){
-    try { await reverseJournalByRef('opd_token', String(id), `Auto reversal for token ${status}`) } catch (e) { console.warn('Finance reversal failed', e) }
+    const wasAlreadyClosed = prev.status === 'returned' || prev.status === 'cancelled'
+    if (!wasAlreadyClosed){
+      try {
+        // Only create a reversal if there isn't already a reversal newer than the latest OPD journal.
+        const lastOpd: any = await FinanceJournal.findOne({ refType: 'opd_token', refId: String(id) }).sort({ createdAt: -1 }).lean()
+        const lastRev: any = await FinanceJournal.findOne({ refType: 'opd_token_reversal', refId: String(id) }).sort({ createdAt: -1 }).lean()
+        if (lastOpd && (!lastRev || new Date(lastOpd.createdAt) > new Date(lastRev.createdAt))){
+          await reverseJournalByRef('opd_token', String(id), `Auto reversal for token ${status}`)
+        }
+      } catch (e) { console.warn('Finance reversal failed', e) }
+    }
     // Corporate: create reversal lines for OPD corporate transactions
     try {
       const existing: any[] = await CorporateTransaction.find({ refType: 'opd_token', refId: String(id), status: { $ne: 'reversed' } }).lean()
@@ -394,6 +423,18 @@ export async function updateStatus(req: Request, res: Response){
         } catch (e) { console.warn('Failed to create corporate reversal for OPD token', e) }
       }
     } catch (e) { console.warn('Corporate reversal lookup failed', e) }
+  }
+
+  if (prev.status === 'returned' && status !== 'returned' && status !== 'cancelled'){
+    try {
+      const lastRev: any = await FinanceJournal.findOne({ refType: 'opd_token_reversal', refId: String(id) }).sort({ createdAt: -1 }).lean()
+      const lastUndo: any = await FinanceJournal.findOne({ refType: 'opd_token_reversal_reversal', refId: String(lastRev?._id || '') }).sort({ createdAt: -1 }).lean()
+      if (lastRev && !lastUndo){
+        await reverseJournalById(String(lastRev._id), 'Undo token return')
+      }
+    } catch (e) {
+      console.warn('Finance undo-return failed', e)
+    }
   }
   // Audit: status change mapping
   try {

@@ -19,7 +19,7 @@ const OrderSchema = new Schema({
   tests: { type: [String], required: true },
   items: [{
     testId: { type: String, required: true },
-    status: { type: String, enum: ['received','completed','returned'], default: 'received' },
+    status: { type: String, enum: ['received', 'completed', 'returned'], default: 'received' },
     sampleTime: { type: String },
     reportingTime: { type: String },
   }],
@@ -28,7 +28,7 @@ const OrderSchema = new Schema({
   discount: { type: Number, default: 0 },
   net: { type: Number, default: 0 },
   tokenNo: { type: String },
-  status: { type: String, enum: ['received','completed','returned'], default: 'received' },
+  status: { type: String, enum: ['received', 'completed', 'returned'], default: 'received' },
   sampleTime: { type: String },
   reportingTime: { type: String },
   referringConsultant: { type: String },
@@ -50,13 +50,13 @@ export type DiagnosticOrderDoc = {
   }
   corporateId?: string
   tests: string[]
-  items?: Array<{ testId: string; status: 'received'|'completed'|'returned'; sampleTime?: string; reportingTime?: string }>
+  items?: Array<{ testId: string; status: 'received' | 'completed' | 'returned'; sampleTime?: string; reportingTime?: string }>
   returnedTests?: string[]
   subtotal: number
   discount: number
   net: number
   tokenNo?: string
-  status: 'received'|'completed'|'returned'
+  status: 'received' | 'completed' | 'returned'
   sampleTime?: string
   reportingTime?: string
   referringConsultant?: string

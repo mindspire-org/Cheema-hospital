@@ -209,6 +209,11 @@ r.post('/staff', Staff.create)
 r.put('/staff/:id', Staff.update)
 r.delete('/staff/:id', Staff.remove)
 
+// Staff Biometric
+r.post('/staff/biometric/fetch', Staff.fetchBiometricNow)
+r.get('/staff/biometric/device-users', Staff.listBiometricDeviceUsers)
+r.post('/staff/:id/biometric/connect', Staff.connectBiometric)
+
 // Users (Hospital App Users)
 r.get('/users', Users.list)
 r.post('/users', Users.create)

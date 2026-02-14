@@ -129,3 +129,18 @@ export async function setNextVisit(req: Request, res: Response){
   if (!s) return res.status(404).json({ message: 'Not found' })
   res.json(s)
 }
+
+export async function completeProcedure(req: Request, res: Response){
+  const body = (req.body || {}) as any
+  const patientMrn = String(body.patientMrn || '').trim()
+  const procedureId = String(body.procedureId || '').trim()
+  if (!patientMrn || !procedureId) return res.status(400).json({ message: 'patientMrn and procedureId are required' })
+
+  const filter: any = { patientMrn: new RegExp(`^${patientMrn}$`, 'i'), procedureId }
+  const list: any[] = await ProcedureSession.find(filter).lean()
+  if (!list.length) return res.status(404).json({ message: 'No sessions found for this procedure' })
+
+  await ProcedureSession.updateMany(filter, { $set: { procedureCompleted: true, status: 'done' } })
+  const items = await ProcedureSession.find(filter).sort({ date: -1 }).lean()
+  res.json({ ok: true, items })
+}

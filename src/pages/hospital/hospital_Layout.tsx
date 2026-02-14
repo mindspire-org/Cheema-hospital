@@ -29,14 +29,23 @@ export default function Hospital_Layout() {
   return (
     <div className={theme === 'dark' ? 'hospital-scope dark' : 'hospital-scope'}>
       <div className={shell}>
-        <div className="flex h-dvh overflow-hidden">
-          <Hospital_Sidebar collapsed={sidebarCollapsed} />
-          <div className="flex h-dvh flex-1 flex-col overflow-hidden">
-            <Hospital_Header onToggleSidebar={() => setSidebarCollapsed(v => !v)} collapsed={sidebarCollapsed} onToggleTheme={() => setTheme(t=>t==='dark'?'light':'dark')} theme={theme} />
-            <main className="w-full flex-1 overflow-y-auto px-4 py-6 sm:px-6">
-              <Outlet />
-            </main>
+        <div className="sticky top-0 z-20 w-full md:border-b" style={{ background: 'linear-gradient(180deg, var(--navy) 0%, var(--navy-700) 100%)', borderColor: 'rgba(255,255,255,0.12)' }}>
+          <div className="flex h-14">
+            <Hospital_Header
+              variant="navy"
+              onToggleSidebar={() => setSidebarCollapsed(v => !v)}
+              collapsed={sidebarCollapsed}
+              onToggleTheme={() => setTheme(t=>t==='dark'?'light':'dark')}
+              theme={theme}
+            />
           </div>
+        </div>
+
+        <div className="flex">
+          <Hospital_Sidebar collapsed={sidebarCollapsed} />
+          <main className="w-full flex-1">
+            <Outlet />
+          </main>
         </div>
       </div>
     </div>

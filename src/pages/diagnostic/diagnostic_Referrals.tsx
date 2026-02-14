@@ -45,7 +45,7 @@ export default function Diagnostic_Referrals(){
   }, [list, q])
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 p-4 md:p-6">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="text-xl font-semibold text-slate-800">Diagnostic Referrals</div>
         <div className="flex items-center gap-2">

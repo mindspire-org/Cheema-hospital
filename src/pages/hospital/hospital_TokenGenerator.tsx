@@ -58,20 +58,20 @@ export default function Hospital_TokenGenerator() {
   const [companies, setCompanies] = useState<Array<{ id: string; name: string }>>([])
   useEffect(() => {
     let cancelled = false
-    async function load(){
+    async function load() {
       try {
         const dRes = await hospitalApi.listDepartments() as any
-        const deps = (dRes.departments || dRes || []).map((d: any)=>({ id: String(d._id||d.id), name: d.name, fee: Number(d.opdBaseFee ?? d.baseFee ?? d.fee ?? 0) }))
+        const deps = (dRes.departments || dRes || []).map((d: any) => ({ id: String(d._id || d.id), name: d.name, fee: Number(d.opdBaseFee ?? d.baseFee ?? d.fee ?? 0) }))
         const docRes = await hospitalApi.listDoctors() as any
-        const docs = (docRes.doctors || docRes || []).map((r: any)=>({ id: String(r._id||r.id), name: r.name, fee: Number(r.opdBaseFee ?? r.baseFee ?? r.fee ?? 0) }))
+        const docs = (docRes.doctors || docRes || []).map((r: any) => ({ id: String(r._id || r.id), name: r.name, fee: Number(r.opdBaseFee ?? r.baseFee ?? r.fee ?? 0) }))
         // load corporate companies
         let comps: Array<{ id: string; name: string }> = []
         try {
           const cRes = await corporateApi.listCompanies() as any
-          comps = (cRes?.companies || []).map((c: any)=>({ id: String(c._id||c.id), name: c.name }))
-        } catch {}
-        if (!cancelled){ setDepartments(deps); setDoctors(docs); setCompanies(comps) }
-      } catch {}
+          comps = (cRes?.companies || []).map((c: any) => ({ id: String(c._id || c.id), name: c.name }))
+        } catch { }
+        if (!cancelled) { setDepartments(deps); setDoctors(docs); setCompanies(comps) }
+      } catch { }
     }
 
     load()
@@ -98,14 +98,14 @@ export default function Hospital_TokenGenerator() {
     corporateCoverageCap: '',
   })
 
-  
+
 
   // Scheduling (OPD appointments)
-  const [apptDate, setApptDate] = useState<string>(()=> new Date().toISOString().slice(0,10))
+  const [apptDate, setApptDate] = useState<string>(() => new Date().toISOString().slice(0, 10))
   const [schedules, setSchedules] = useState<Array<{ _id: string; doctorId: string; dateIso: string; startTime: string; endTime: string; slotMinutes: number; fee?: number; followupFee?: number }>>([])
   const [scheduleId, setScheduleId] = useState('')
   const [selectedSlotNo, setSelectedSlotNo] = useState<number | null>(null)
-  const [slotRows, setSlotRows] = useState<Array<{ slotNo: number; start: string; end: string; status: 'free'|'appt'|'token'; appt?: any; tokenNo?: string }>>([])
+  const [slotRows, setSlotRows] = useState<Array<{ slotNo: number; start: string; end: string; status: 'free' | 'appt' | 'token'; appt?: any; tokenNo?: string }>>([])
 
   const finalFee = useMemo(() => {
     const fee = parseFloat(form.consultationFee || '0')
@@ -143,7 +143,7 @@ export default function Hospital_TokenGenerator() {
   const [slipData, setSlipData] = useState<TokenSlipData | null>(null)
 
   // IPD inline admit state
-  const isIPD = useMemo(()=>{
+  const isIPD = useMemo(() => {
     const dep = departments.find(d => String(d.id) === String(form.departmentId))
     return (dep?.name || '').trim().toLowerCase() === 'ipd'
   }, [departments, form.departmentId])
@@ -151,17 +151,17 @@ export default function Hospital_TokenGenerator() {
   const [ipdBedId, setIpdBedId] = useState('')
   const [ipdDeposit, setIpdDeposit] = useState('')
 
-  useEffect(()=>{
+  useEffect(() => {
     let cancelled = false
-    async function loadBeds(){
+    async function loadBeds() {
       if (!isIPD) return
       try {
         const res = await hospitalApi.listBeds({ status: 'available' }) as any
         if (!cancelled) setIpdBeds(res.beds || [])
-      } catch {}
+      } catch { }
     }
     loadBeds()
-    return ()=>{ cancelled = true }
+    return () => { cancelled = true }
   }, [isIPD])
 
   // When a bed is selected, auto-fill Bed Charges from bed.charges
@@ -174,47 +174,47 @@ export default function Hospital_TokenGenerator() {
   // Auto-quote fee when department/doctor/corporate changes
   useEffect(() => {
     let cancelled = false
-    async function run(){
+    async function run() {
       if (!form.departmentId) return
       const getBaseFromQuote = async (): Promise<number> => {
         try {
           const res = await hospitalApi.quoteOPDPrice({ departmentId: form.departmentId, doctorId: form.doctor || undefined, visitType: undefined }) as any
           const feeCandidate = [res?.fee, res?.feeResolved, res?.pricing?.feeResolved, res?.amount, res?.price, res?.data?.fee]
-            .map((x:any)=> Number(x))
+            .map((x: any) => Number(x))
             .find(n => Number.isFinite(n) && n >= 0)
           return feeCandidate ?? 0
         } catch { return 0 }
       }
 
-      if (form.billingType === 'Corporate' && form.corporateCompanyId){
+      if (form.billingType === 'Corporate' && form.corporateCompanyId) {
         // Local corporate compute to avoid relying on backend quote behavior
         try {
           const r = await corporateApi.listRateRules({ companyId: form.corporateCompanyId, scope: 'OPD' }) as any
-          const rules: any[] = (r?.rules || []).filter((x:any)=> x && x.active !== false)
-          const today = new Date().toISOString().slice(0,10)
-          const valid = rules.filter((x:any)=> (!x.effectiveFrom || String(x.effectiveFrom).slice(0,10) <= today) && (!x.effectiveTo || today <= String(x.effectiveTo).slice(0,10)))
-          const pri = (x:any)=> (x?.priority ?? 100)
-          const docMatch = form.doctor ? valid.filter(x=> x.ruleType==='doctor' && String(x.refId)===String(form.doctor)).sort((a:any,b:any)=> pri(a)-pri(b))[0] : null
-          const depMatch = valid.filter(x=> x.ruleType==='department' && String(x.refId)===String(form.departmentId)).sort((a:any,b:any)=> pri(a)-pri(b))[0] || null
-          const defMatch = valid.filter(x=> x.ruleType==='default').sort((a:any,b:any)=> pri(a)-pri(b))[0] || null
+          const rules: any[] = (r?.rules || []).filter((x: any) => x && x.active !== false)
+          const today = new Date().toISOString().slice(0, 10)
+          const valid = rules.filter((x: any) => (!x.effectiveFrom || String(x.effectiveFrom).slice(0, 10) <= today) && (!x.effectiveTo || today <= String(x.effectiveTo).slice(0, 10)))
+          const pri = (x: any) => (x?.priority ?? 100)
+          const docMatch = form.doctor ? valid.filter(x => x.ruleType === 'doctor' && String(x.refId) === String(form.doctor)).sort((a: any, b: any) => pri(a) - pri(b))[0] : null
+          const depMatch = valid.filter(x => x.ruleType === 'department' && String(x.refId) === String(form.departmentId)).sort((a: any, b: any) => pri(a) - pri(b))[0] || null
+          const defMatch = valid.filter(x => x.ruleType === 'default').sort((a: any, b: any) => pri(a) - pri(b))[0] || null
           const candidates = [docMatch, depMatch, defMatch].filter(Boolean) as any[]
-          candidates.sort((a:any,b:any)=>{
-            const d = pri(a)-pri(b)
-            if (d!==0) return d
-            const rank = (t:string)=> t==='doctor'?0 : t==='department'?1 : 2
-            return rank(a.ruleType)-rank(b.ruleType)
+          candidates.sort((a: any, b: any) => {
+            const d = pri(a) - pri(b)
+            if (d !== 0) return d
+            const rank = (t: string) => t === 'doctor' ? 0 : t === 'department' ? 1 : 2
+            return rank(a.ruleType) - rank(b.ruleType)
           })
           const rule = candidates[0] || null
-          const docBase = doctors.find(d=> String(d.id)===String(form.doctor))?.fee
-          const depBase = departments.find(d=> String(d.id)===String(form.departmentId))?.fee
+          const docBase = doctors.find(d => String(d.id) === String(form.doctor))?.fee
+          const depBase = departments.find(d => String(d.id) === String(form.departmentId))?.fee
           let base = Number.isFinite(docBase!) && Number(docBase) > 0 ? Number(docBase) : (Number.isFinite(depBase!) && Number(depBase) > 0 ? Number(depBase) : NaN)
           if (!Number.isFinite(base) || base <= 0) base = await getBaseFromQuote()
           let eff = Number(base || 0)
-          if (rule){
-            const mode = rule.mode; const val = Number(rule.value||0)
-            if (mode==='fixedPrice') eff = Math.max(0, val)
-            else if (mode==='percentDiscount') eff = Math.max(0, eff - (eff*(val/100)))
-            else if (mode==='fixedDiscount') eff = Math.max(0, eff - val)
+          if (rule) {
+            const mode = rule.mode; const val = Number(rule.value || 0)
+            if (mode === 'fixedPrice') eff = Math.max(0, val)
+            else if (mode === 'percentDiscount') eff = Math.max(0, eff - (eff * (val / 100)))
+            else if (mode === 'fixedDiscount') eff = Math.max(0, eff - val)
           }
           if (!cancelled) setForm(prev => ({ ...prev, consultationFee: String(eff) }))
           return
@@ -226,13 +226,13 @@ export default function Hospital_TokenGenerator() {
       // No corporate or failed local compute: use backend quote
       try {
         const res = await hospitalApi.quoteOPDPrice({ departmentId: form.departmentId, doctorId: form.doctor || undefined, visitType: undefined, corporateId: form.billingType === 'Corporate' ? (form.corporateCompanyId || undefined) : undefined }) as any
-        if (!cancelled){
+        if (!cancelled) {
           const feeCandidate = [res?.fee, res?.feeResolved, res?.pricing?.feeResolved, res?.amount, res?.price, res?.data?.fee]
-            .map((x:any)=> Number(x))
+            .map((x: any) => Number(x))
             .find(n => Number.isFinite(n) && n >= 0)
           if (feeCandidate != null) setForm(prev => ({ ...prev, consultationFee: String(feeCandidate) }))
         }
-      } catch {}
+      } catch { }
     }
     run()
     return () => { cancelled = true }
@@ -242,7 +242,7 @@ export default function Hospital_TokenGenerator() {
   // Load doctor schedules for selected date (non-IPD only)
   useEffect(() => {
     let cancelled = false
-    async function loadSchedules(){
+    async function loadSchedules() {
       try {
         if (!form.doctor) { setSchedules([]); setScheduleId(''); return }
         const res = await hospitalApi.listDoctorSchedules({ doctorId: form.doctor, date: apptDate }) as any
@@ -257,17 +257,17 @@ export default function Hospital_TokenGenerator() {
     return () => { cancelled = true }
   }, [form.doctor, apptDate, isIPD])
 
-  function toMin(hhmm: string){ const [h,m] = (hhmm||'').split(':').map(x=>parseInt(x,10)||0); return (h*60)+m }
-  function fromMin(min: number){ const h = Math.floor(min/60).toString().padStart(2,'0'); const m = (min%60).toString().padStart(2,'0'); return `${h}:${m}` }
+  function toMin(hhmm: string) { const [h, m] = (hhmm || '').split(':').map(x => parseInt(x, 10) || 0); return (h * 60) + m }
+  function fromMin(min: number) { const h = Math.floor(min / 60).toString().padStart(2, '0'); const m = (min % 60).toString().padStart(2, '0'); return `${h}:${m}` }
 
-  useEffect(()=>{
+  useEffect(() => {
     let cancelled = false
-    async function loadSlots(){
+    async function loadSlots() {
       setSelectedSlotNo(null)
       setSlotRows([])
       const s = schedules.find(x => String(x._id) === String(scheduleId))
-      if (!s){ return }
-      try{
+      if (!s) { return }
+      try {
         const [ap, tk]: any = await Promise.all([
           hospitalApi.listAppointments({ scheduleId: String(s._id) }),
           hospitalApi.listTokens({ scheduleId: String(s._id) }),
@@ -275,26 +275,28 @@ export default function Hospital_TokenGenerator() {
         const appts: any[] = ap?.appointments || []
         const tokens: any[] = tk?.tokens || []
         const tokenBySlot = new Map<number, any>()
-        for (const t of tokens){
-          const n = Number(t.slotNo||0)
-          if (n>0) tokenBySlot.set(n, t)
+        for (const t of tokens) {
+          const st = String(t?.status || '')
+          if (st === 'returned' || st === 'cancelled') continue
+          const n = Number(t.slotNo || 0)
+          if (n > 0) tokenBySlot.set(n, t)
         }
-        const slotMinutes = Math.max(5, Number(s.slotMinutes||15))
+        const slotMinutes = Math.max(5, Number(s.slotMinutes || 15))
         const total = Math.max(0, Math.floor((toMin(s.endTime) - toMin(s.startTime)) / slotMinutes))
-        const rows: Array<{ slotNo: number; start: string; end: string; status: 'free'|'appt'|'token'; appt?: any; tokenNo?: string }> = []
-        for (let i=1;i<=total;i++){
-          const startMin = toMin(s.startTime) + (i-1)*slotMinutes
+        const rows: Array<{ slotNo: number; start: string; end: string; status: 'free' | 'appt' | 'token'; appt?: any; tokenNo?: string }> = []
+        for (let i = 1; i <= total; i++) {
+          const startMin = toMin(s.startTime) + (i - 1) * slotMinutes
           const se = { start: fromMin(startMin), end: fromMin(startMin + slotMinutes) }
-          const appt = appts.find(a => Number(a.slotNo||0) === i && ['booked','confirmed','checked-in'].includes(String(a.status||'')))
+          const appt = appts.find(a => Number(a.slotNo || 0) === i && ['booked', 'confirmed', 'checked-in'].includes(String(a.status || '')))
           if (appt) rows.push({ slotNo: i, ...se, status: 'appt', appt })
           else if (tokenBySlot.has(i)) rows.push({ slotNo: i, ...se, status: 'token', tokenNo: tokenBySlot.get(i)?.tokenNo })
           else rows.push({ slotNo: i, ...se, status: 'free' })
         }
-        if (!cancelled){ setSlotRows(rows) }
-      } catch { if (!cancelled){ setSlotRows([]); setSelectedSlotNo(null) } }
+        if (!cancelled) { setSlotRows(rows) }
+      } catch { if (!cancelled) { setSlotRows([]); setSelectedSlotNo(null) } }
     }
     if (!isIPD && scheduleId) loadSlots()
-    return ()=>{ cancelled = true }
+    return () => { cancelled = true }
   }, [scheduleId, schedules, isIPD])
 
   const [confirmPatient, setConfirmPatient] = useState<null | { summary: string; patient: any; key: string }>(null)
@@ -312,7 +314,7 @@ export default function Hospital_TokenGenerator() {
   const [toast, setToast] = useState<null | { type: 'success' | 'error'; message: string }>(null)
   const showToast = (type: 'success' | 'error', message: string) => {
     setToast({ type, message })
-    setTimeout(()=> setToast(null), 2500)
+    setTimeout(() => setToast(null), 2500)
   }
 
   useEffect(() => {
@@ -324,17 +326,17 @@ export default function Hospital_TokenGenerator() {
     return () => document.removeEventListener('mousedown', onDoc)
   }, [])
 
-  async function onMrnKeyDown(e: React.KeyboardEvent<HTMLInputElement>){
+  async function onMrnKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key !== 'Enter') return
     e.preventDefault()
     const mr = (form.mrNumber || '').trim()
     if (!mr) return
-    try{
+    try {
       const r: any = await hospitalApi.searchPatients({ mrn: mr, limit: 5 })
       const list: any[] = Array.isArray(r?.patients) ? r.patients : []
       // Prefer exact MRN match (case-insensitive), else take first
-      const p = list.find(x => String(x.mrn||'').trim().toLowerCase() === mr.toLowerCase()) || list[0]
-      if (!p){ showToast('error', 'No patient found for this MR number'); return }
+      const p = list.find(x => String(x.mrn || '').trim().toLowerCase() === mr.toLowerCase()) || list[0]
+      if (!p) { showToast('error', 'No patient found for this MR number'); return }
       setForm(prev => ({
         ...prev,
         patientName: p.fullName || prev.patientName,
@@ -355,25 +357,25 @@ export default function Hospital_TokenGenerator() {
 
 
 
-  async function onPhoneChange(e: React.ChangeEvent<HTMLInputElement>){
+  async function onPhoneChange(e: React.ChangeEvent<HTMLInputElement>) {
     const newPhone = e.target.value
     // Update form with new phone number
     update('phone', newPhone)
-    
+
     // Reset previous selections when phone changes
     setPhonePatients([])
     setShowPhonePicker(false)
     skipLookupKeyRef.current = null
     lastPromptKeyRef.current = null
 
-    const digits = newPhone.replace(/\D+/g,'')
+    const digits = newPhone.replace(/\D+/g, '')
 
     // Incremental suggestions once 3+ digits are typed
-    if (digits.length >= 3){
+    if (digits.length >= 3) {
       clearTimeout((window as any).phoneSuggestTimeout)
-      ;(window as any).phoneSuggestTimeout = setTimeout(() => {
-        runPhoneSuggestLookup(digits)
-      }, 250)
+        ; (window as any).phoneSuggestTimeout = setTimeout(() => {
+          runPhoneSuggestLookup(digits)
+        }, 250)
     } else {
       setPhoneSuggestItems([])
       setPhoneSuggestOpen(false)
@@ -383,14 +385,14 @@ export default function Hospital_TokenGenerator() {
     if (digits.length >= 10) {
       // Debounce the lookup to avoid too many API calls
       clearTimeout((window as any).phoneLookupTimeout)
-      ;(window as any).phoneLookupTimeout = setTimeout(() => {
-        autoFillPatientByPhone(newPhone)
-      }, 500)
+        ; (window as any).phoneLookupTimeout = setTimeout(() => {
+          autoFillPatientByPhone(newPhone)
+        }, 500)
     }
   }
 
-  async function runPhoneSuggestLookup(digits: string){
-    try{
+  async function runPhoneSuggestLookup(digits: string) {
+    try {
       phoneSuggestQueryRef.current = digits
       const r: any = await hospitalApi.searchPatients({ phone: digits, limit: 8 })
       const list: any[] = Array.isArray(r?.patients) ? r.patients : []
@@ -403,7 +405,7 @@ export default function Hospital_TokenGenerator() {
     }
   }
 
-  function selectPhoneSuggestion(p: any){
+  function selectPhoneSuggestion(p: any) {
     setForm(prev => ({
       ...prev,
       patientName: p.fullName || prev.patientName,
@@ -420,20 +422,20 @@ export default function Hospital_TokenGenerator() {
     showToast('success', 'Patient selected')
   }
 
-  async function autoFillPatientByPhone(phoneNumber: string){
-    const digits = phoneNumber.replace(/\D+/g,'')
+  async function autoFillPatientByPhone(phoneNumber: string) {
+    const digits = phoneNumber.replace(/\D+/g, '')
     if (!digits || digits.length < 10) return // Need at least 10 digits for phone lookup
-    
-    try{
+
+    try {
       const r: any = await hospitalApi.searchPatients({ phone: digits, limit: 10 })
       const list: any[] = Array.isArray(r?.patients) ? r.patients : []
-      
-      if (list.length > 1){
+
+      if (list.length > 1) {
         // Multiple patients under same phone - show picker
         setPhonePatients(list)
         setShowPhonePicker(true)
         showToast('success', `${list.length} patients found - select one`)
-      } else if (list.length === 1){
+      } else if (list.length === 1) {
         // Single patient - automatically fill all data
         const p = list[0]
         setForm(prev => ({
@@ -458,17 +460,17 @@ export default function Hospital_TokenGenerator() {
     }
   }
 
-  async function onPhoneBlurNew(){
+  async function onPhoneBlurNew() {
     await autoFillPatientByPhone(form.phone || '')
   }
 
-  
+
 
   const generateToken = async (e: React.FormEvent) => {
     e.preventDefault()
     const selDoc = doctors.find(d => String(d.id) === String(form.doctor))
     const selDept = departments.find(d => String(d.id) === String(form.departmentId))
-    if (!form.departmentId){
+    if (!form.departmentId) {
       alert('Please select a department before generating a token')
       return
     }
@@ -482,7 +484,7 @@ export default function Hospital_TokenGenerator() {
           discount: Number(form.discount) || 0,
           paymentRef: undefined,
         }
-        if (form.billingType === 'Corporate' && form.corporateCompanyId){
+        if (form.billingType === 'Corporate' && form.corporateCompanyId) {
           payload.corporateId = form.corporateCompanyId
           if (form.corporatePreAuthNo) payload.corporatePreAuthNo = form.corporatePreAuthNo
           if (form.corporateCoPayPercent) payload.corporateCoPayPercent = Number(form.corporateCoPayPercent)
@@ -500,7 +502,7 @@ export default function Hospital_TokenGenerator() {
         if (form.mrNumber) payload.mrn = form.mrNumber
         else if (form.patientName) payload.patientName = form.patientName
         const rawDeposit = String(ipdDeposit || '').trim()
-        const cleanedDeposit = rawDeposit.replace(/[^0-9.]/g,'')
+        const cleanedDeposit = rawDeposit.replace(/[^0-9.]/g, '')
         const depAmt = cleanedDeposit ? parseFloat(cleanedDeposit) : NaN
         const res = await hospitalApi.createOpdToken({ ...payload, overrideFee: isNaN(depAmt) ? undefined : depAmt }) as any
         const tokenId = String(res?.token?._id || '')
@@ -510,8 +512,8 @@ export default function Hospital_TokenGenerator() {
         // Show print slip with full details
         const slip: TokenSlipData = {
           tokenNo: res?.token?.tokenNo || 'N/A',
-          departmentName: (departments.find(d=>String(d.id)===String(form.departmentId))?.name) || '-',
-          doctorName: (doctors.find(d=>String(d.id)===String(form.doctor))?.name) || '-',
+          departmentName: (departments.find(d => String(d.id) === String(form.departmentId))?.name) || '-',
+          doctorName: (doctors.find(d => String(d.id) === String(form.doctor))?.name) || '-',
           patientName: res?.token?.patientName || form.patientName || '-',
           phone: form.phone || '',
           mrn: (res?.token?.mrn || form.mrNumber || ''),
@@ -538,7 +540,7 @@ export default function Hospital_TokenGenerator() {
         discount: Number(form.discount) || 0,
         paymentRef: undefined,
       }
-      if (form.billingType === 'Corporate' && form.corporateCompanyId){
+      if (form.billingType === 'Corporate' && form.corporateCompanyId) {
         payload.corporateId = form.corporateCompanyId
         if (form.corporatePreAuthNo) payload.corporatePreAuthNo = form.corporatePreAuthNo
         if (form.corporateCoPayPercent) payload.corporateCoPayPercent = Number(form.corporateCoPayPercent)
@@ -557,10 +559,10 @@ export default function Hospital_TokenGenerator() {
       if (!isIPD && scheduleId) {
         (payload as any).scheduleId = scheduleId
         const s = schedules.find(x => String(x._id) === String(scheduleId))
-        if (s && selectedSlotNo){
-          const slotMinutes = Math.max(5, Number(s.slotMinutes||15))
-          const startMin = toMin(s.startTime) + (selectedSlotNo-1)*slotMinutes
-          ;(payload as any).apptStart = fromMin(startMin)
+        if (s && selectedSlotNo) {
+          const slotMinutes = Math.max(5, Number(s.slotMinutes || 15))
+          const startMin = toMin(s.startTime) + (selectedSlotNo - 1) * slotMinutes
+            ; (payload as any).apptStart = fromMin(startMin)
         }
       }
       if (form.mrNumber) payload.mrn = form.mrNumber
@@ -617,7 +619,7 @@ export default function Hospital_TokenGenerator() {
                     value={form.phone}
                     onChange={onPhoneChange}
                     onBlur={onPhoneBlurNew}
-                    onFocus={() => { if (phoneSuggestItems.length>0) setPhoneSuggestOpen(true) }}
+                    onFocus={() => { if (phoneSuggestItems.length > 0) setPhoneSuggestOpen(true) }}
                     ref={phoneRef}
                   />
                   {phoneSuggestOpen && (
@@ -625,7 +627,7 @@ export default function Hospital_TokenGenerator() {
                       {phoneSuggestItems.length === 0 ? (
                         <div className="px-3 py-2 text-sm text-slate-500">No results</div>
                       ) : (
-                        phoneSuggestItems.map((p:any, idx:number) => (
+                        phoneSuggestItems.map((p: any, idx: number) => (
                           <button
                             type="button"
                             key={p._id || idx}
@@ -644,19 +646,19 @@ export default function Hospital_TokenGenerator() {
               </div>
               <div className="md:col-span-2">
                 <label className="mb-1 block text-sm font-medium text-slate-700">Patient Name</label>
-                <input className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" placeholder="Full Name" value={form.patientName} onChange={e=>{ update('patientName', e.target.value) }} ref={nameRef} />
+                <input className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" placeholder="Full Name" value={form.patientName} onChange={e => { update('patientName', e.target.value) }} ref={nameRef} />
               </div>
               <div className="md:col-span-2">
                 <label className="mb-1 block text-sm font-medium text-slate-700">Search by MR Number</label>
-                <input className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" placeholder="Enter MR# (e.g., MR-15)" value={form.mrNumber} onChange={e=>update('mrNumber', e.target.value)} onKeyDown={onMrnKeyDown} />
+                <input className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" placeholder="Enter MR# (e.g., MR-15)" value={form.mrNumber} onChange={e => update('mrNumber', e.target.value)} onKeyDown={onMrnKeyDown} />
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Age</label>
-                <input className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" placeholder="e.g., 25" value={form.age} onChange={e=>update('age', e.target.value)} />
+                <input className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" placeholder="e.g., 25" value={form.age} onChange={e => update('age', e.target.value)} />
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Gender</label>
-                <select className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" value={form.gender} onChange={e=>update('gender', e.target.value)}>
+                <select className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" value={form.gender} onChange={e => update('gender', e.target.value)}>
                   <option value="">Select gender</option>
                   <option>Male</option>
                   <option>Female</option>
@@ -665,7 +667,7 @@ export default function Hospital_TokenGenerator() {
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Guardian</label>
-                <select className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" value={form.guardianRel} onChange={e=>update('guardianRel', e.target.value)}>
+                <select className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" value={form.guardianRel} onChange={e => update('guardianRel', e.target.value)}>
                   <option value="">S/O or D/O</option>
                   <option value="S/O">S/O</option>
                   <option value="D/O">D/O</option>
@@ -673,15 +675,15 @@ export default function Hospital_TokenGenerator() {
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Guardian Name</label>
-                <input className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" placeholder="Father/Guardian Name" value={form.guardianName} onChange={e=>update('guardianName', e.target.value)} />
+                <input className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" placeholder="Father/Guardian Name" value={form.guardianName} onChange={e => update('guardianName', e.target.value)} />
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">CNIC</label>
-                <input className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" placeholder="13-digit CNIC (no dashes)" value={form.cnic} onChange={e=>update('cnic', e.target.value)} />
+                <input className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" placeholder="13-digit CNIC (no dashes)" value={form.cnic} onChange={e => update('cnic', e.target.value)} />
               </div>
               <div className="md:col-span-2">
                 <label className="mb-1 block text-sm font-medium text-slate-700">Address</label>
-                <textarea className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" rows={3} placeholder="Residential Address" value={form.address} onChange={e=>update('address', e.target.value)} />
+                <textarea className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" rows={3} placeholder="Residential Address" value={form.address} onChange={e => update('address', e.target.value)} />
               </div>
             </div>
           </div>
@@ -694,7 +696,7 @@ export default function Hospital_TokenGenerator() {
                 <SearchSelect
                   options={doctors.map(d => ({ value: d.id, label: d.name }))}
                   value={form.doctor}
-                  onChange={(v)=>update('doctor', v)}
+                  onChange={(v) => update('doctor', v)}
                   placeholder="Select doctor"
                 />
                 <p className="mt-1 text-xs text-slate-500">Doctor selection is optional for IPD.</p>
@@ -703,12 +705,12 @@ export default function Hospital_TokenGenerator() {
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
                     <label className="mb-1 block text-sm font-medium text-slate-700">Appointment Date</label>
-                    <input type="date" value={apptDate} onChange={e=>setApptDate(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
+                    <input type="date" value={apptDate} onChange={e => setApptDate(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
                   </div>
                   <div>
                     <label className="mb-1 block text-sm font-medium text-slate-700">Doctor Schedule</label>
-                    <select value={scheduleId} onChange={e=>setScheduleId(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200">
-                      <option value="">{schedules.length? 'Select schedule' : 'No schedules found'}</option>
+                    <select value={scheduleId} onChange={e => setScheduleId(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200">
+                      <option value="">{schedules.length ? 'Select schedule' : 'No schedules found'}</option>
                       {schedules.map(s => (
                         <option key={s._id} value={s._id}>{s.startTime} - {s.endTime} • {s.slotMinutes} min</option>
                       ))}
@@ -722,19 +724,19 @@ export default function Hospital_TokenGenerator() {
                         </div>
                         <div className="flex flex-wrap gap-1.5">
                           {slotRows.map(r => {
-                            const base = r.status==='free' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : (r.status==='appt' ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-rose-50 border-rose-200 text-rose-700')
-                            const isSel = selectedSlotNo===r.slotNo
+                            const base = r.status === 'free' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : (r.status === 'appt' ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-rose-50 border-rose-200 text-rose-700')
+                            const isSel = selectedSlotNo === r.slotNo
                             const selCls = isSel ? 'ring-2 ring-violet-400' : ''
-                            const label = r.status==='token' && r.tokenNo ? `${r.start} - ${r.end} • #${r.slotNo} • Token ${r.tokenNo}` : `${r.start} - ${r.end} • #${r.slotNo}`
-                            const title = r.status==='token' && r.tokenNo ? `Token ${r.tokenNo}` : (r.status==='appt' ? 'Appointment' : 'Free')
+                            const label = r.status === 'token' && r.tokenNo ? `${r.start} - ${r.end} • #${r.slotNo} • Token ${r.tokenNo}` : `${r.start} - ${r.end} • #${r.slotNo}`
+                            const title = r.status === 'token' && r.tokenNo ? `Token ${r.tokenNo}` : (r.status === 'appt' ? 'Appointment' : 'Free')
                             return (
-                              <button key={r.slotNo} type="button" title={title} disabled={r.status!=='free'} onClick={()=>setSelectedSlotNo(r.slotNo)} className={`rounded-md border px-2 py-1 text-xs ${base} ${selCls} disabled:opacity-50`}>
+                              <button key={r.slotNo} type="button" title={title} disabled={r.status !== 'free'} onClick={() => setSelectedSlotNo(r.slotNo)} className={`rounded-md border px-2 py-1 text-xs ${base} ${selCls} disabled:opacity-50`}>
                                 {label}
                               </button>
                             )
                           })}
                         </div>
-                        {selectedSlotNo!=null ? (
+                        {selectedSlotNo != null ? (
                           <div className="mt-2 text-xs text-slate-600">Selected slot: #{selectedSlotNo}</div>
                         ) : (
                           <div className="mt-2 text-xs text-slate-500">No slot selected — will auto-assign next free slot</div>
@@ -749,13 +751,13 @@ export default function Hospital_TokenGenerator() {
                 <SearchSelect
                   options={departments.map(d => ({ value: d.id, label: d.name }))}
                   value={form.departmentId}
-                  onChange={(v)=>update('departmentId', v)}
+                  onChange={(v) => update('departmentId', v)}
                   placeholder="Select department"
                 />
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Billing Type</label>
-                <select className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" value={form.billingType} onChange={e=>update('billingType', e.target.value)}>
+                <select className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" value={form.billingType} onChange={e => update('billingType', e.target.value)}>
                   <option>Cash</option>
                   <option>Card</option>
                   <option>Insurance</option>
@@ -766,7 +768,7 @@ export default function Hospital_TokenGenerator() {
                 <>
                   <div>
                     <label className="mb-1 block text-sm font-medium text-slate-700">Corporate Company</label>
-                    <select value={form.corporateCompanyId} onChange={e=>update('corporateCompanyId', e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200">
+                    <select value={form.corporateCompanyId} onChange={e => update('corporateCompanyId', e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200">
                       <option value="">None</option>
                       {companies.map(c => (
                         <option key={c.id} value={c.id}>{c.name}</option>
@@ -777,15 +779,15 @@ export default function Hospital_TokenGenerator() {
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                       <div>
                         <label className="mb-1 block text-sm font-medium text-slate-700">Pre-Auth No</label>
-                        <input value={form.corporatePreAuthNo} onChange={e=>update('corporatePreAuthNo', e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" placeholder="Optional" />
+                        <input value={form.corporatePreAuthNo} onChange={e => update('corporatePreAuthNo', e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" placeholder="Optional" />
                       </div>
                       <div>
                         <label className="mb-1 block text-sm font-medium text-slate-700">Co-Pay %</label>
-                        <input value={form.corporateCoPayPercent} onChange={e=>update('corporateCoPayPercent', e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" placeholder="0-100" />
+                        <input value={form.corporateCoPayPercent} onChange={e => update('corporateCoPayPercent', e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" placeholder="0-100" />
                       </div>
                       <div>
                         <label className="mb-1 block text-sm font-medium text-slate-700">Coverage Cap</label>
-                        <input value={form.corporateCoverageCap} onChange={e=>update('corporateCoverageCap', e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" placeholder="e.g., 5000" />
+                        <input value={form.corporateCoverageCap} onChange={e => update('corporateCoverageCap', e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" placeholder="e.g., 5000" />
                       </div>
                     </div>
                   )}
@@ -797,7 +799,7 @@ export default function Hospital_TokenGenerator() {
                     <label className="mb-1 block text-sm font-medium text-slate-700">Select Bed</label>
                     <select
                       value={ipdBedId}
-                      onChange={(e)=>{
+                      onChange={(e) => {
                         setIpdBedId(e.target.value)
                         const opt = (e.target as HTMLSelectElement).selectedOptions?.[0] as any
                         const chargesAttr = opt?.getAttribute?.('data-charges')
@@ -808,14 +810,14 @@ export default function Hospital_TokenGenerator() {
                       <option value="">Available beds</option>
                       {ipdBeds.map(b => (
                         <option key={b._id} value={String(b._id)} data-charges={b.charges ?? ''}>
-                          {b.label}{b.charges!=null ? ` - (Rs. ${b.charges})` : ''}
+                          {b.label}{b.charges != null ? ` - (Rs. ${b.charges})` : ''}
                         </option>
                       ))}
                     </select>
                   </div>
                   <div>
                     <label className="mb-1 block text-sm font-medium text-slate-700">Bed Charges</label>
-                    <input value={ipdDeposit} onChange={e=>setIpdDeposit(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" placeholder="e.g., Rs. 1000" />
+                    <input value={ipdDeposit} onChange={e => setIpdDeposit(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" placeholder="e.g., Rs. 1000" />
                   </div>
                 </>
               )}
@@ -828,20 +830,20 @@ export default function Hospital_TokenGenerator() {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">Consultation Fee</label>
-              <input className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" placeholder="Fee" value={form.consultationFee} onChange={e=>update('consultationFee', e.target.value)} />
+              <input className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" placeholder="Fee" value={form.consultationFee} onChange={e => update('consultationFee', e.target.value)} />
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">Discount</label>
-              <input className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" placeholder="0" value={form.discount} onChange={e=>update('discount', e.target.value)} />
+              <input className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" placeholder="0" value={form.discount} onChange={e => update('discount', e.target.value)} />
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">Final Fee</label>
-              <div className="flex h-10 items-center rounded-md border border-emerald-200 bg-emerald-50 px-3 text-sm font-semibold text-emerald-700">Rs. { (isIPD ? (Number(ipdDeposit||'0')||0).toFixed(2) : finalFee.toFixed(2)) }</div>
+              <div className="flex h-10 items-center rounded-md border border-emerald-200 bg-emerald-50 px-3 text-sm font-semibold text-emerald-700">Rs. {(isIPD ? (Number(ipdDeposit || '0') || 0).toFixed(2) : finalFee.toFixed(2))}</div>
             </div>
           </div>
         </section>
 
-        
+
 
         <div className="flex items-center justify-end gap-3">
           <button type="button" onClick={reset} className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Reset Form</button>
@@ -849,20 +851,20 @@ export default function Hospital_TokenGenerator() {
         </div>
       </form>
       {showSlip && slipData && (
-        <Hospital_TokenSlip open={showSlip} onClose={()=>setShowSlip(false)} data={slipData} autoPrint={true} />
+        <Hospital_TokenSlip open={showSlip} onClose={() => setShowSlip(false)} data={slipData} autoPrint={true} />
       )}
 
-      
+
       {confirmPatient && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div className="w-full max-w-md rounded-xl bg-white shadow-2xl ring-1 ring-black/5">
             <div className="border-b border-slate-200 px-5 py-3 text-base font-semibold text-slate-800">Confirm Patient</div>
             <div className="px-5 py-4 text-sm whitespace-pre-wrap text-slate-700">{confirmPatient.summary}</div>
             <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-3">
-              <button onClick={()=> { if (confirmPatient) skipLookupKeyRef.current = confirmPatient.key; setConfirmPatient(null); setTimeout(()=>{ if (focusAfterConfirm==='phone') phoneRef.current?.focus(); else if (focusAfterConfirm==='name') nameRef.current?.focus(); setFocusAfterConfirm(null) }, 0) }} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm">Cancel</button>
-              <button onClick={()=>{
+              <button onClick={() => { if (confirmPatient) skipLookupKeyRef.current = confirmPatient.key; setConfirmPatient(null); setTimeout(() => { if (focusAfterConfirm === 'phone') phoneRef.current?.focus(); else if (focusAfterConfirm === 'name') nameRef.current?.focus(); setFocusAfterConfirm(null) }, 0) }} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm">Cancel</button>
+              <button onClick={() => {
                 const p = confirmPatient.patient
-                try{
+                try {
                   setForm(prev => ({
                     ...prev,
                     patientName: p.fullName || prev.patientName,
@@ -887,7 +889,7 @@ export default function Hospital_TokenGenerator() {
             <div className="border-b border-slate-200 px-5 py-3 text-base font-semibold text-slate-800">Select Patient (Phone: {form.phone})</div>
             <div className="max-h-96 overflow-y-auto p-2">
               {phonePatients.map((p, idx) => (
-                <button key={p._id || idx} onClick={()=>{
+                <button key={p._id || idx} onClick={() => {
                   setForm(prev => ({
                     ...prev,
                     patientName: p.fullName || prev.patientName,
@@ -910,8 +912,8 @@ export default function Hospital_TokenGenerator() {
               ))}
             </div>
             <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-3">
-              <button onClick={()=>{ setShowPhonePicker(false); showToast('success', 'You can create a new patient under this phone') }} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm">Cancel</button>
-              <button onClick={()=>{
+              <button onClick={() => { setShowPhonePicker(false); showToast('success', 'You can create a new patient under this phone') }} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm">Cancel</button>
+              <button onClick={() => {
                 // Create new patient under this phone number
                 setShowPhonePicker(false)
                 showToast('success', 'Create new patient under this phone')
@@ -921,7 +923,7 @@ export default function Hospital_TokenGenerator() {
         </div>
       )}
       {toast && (
-        <div className={`fixed bottom-4 right-4 z-50 rounded-md px-4 py-2 text-sm shadow-lg ${toast.type==='success' ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'}`}>
+        <div className={`fixed bottom-4 right-4 z-50 rounded-md px-4 py-2 text-sm shadow-lg ${toast.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'}`}>
           {toast.message}
         </div>
       )}

@@ -1,13 +1,13 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
-import { LayoutDashboard, ListChecks, FlaskConical, FileText, BarChart3, ScrollText, LogOut, Settings as Cog, Ticket, UserCog } from 'lucide-react'
+import { LayoutDashboard, ListChecks, FileText, BarChart3, ScrollText, LogOut, Settings as Cog, Ticket, UserCog, ClipboardList } from 'lucide-react'
 import { diagnosticApi } from '../../utils/api'
 
 type Item = { to: string; label: string; end?: boolean; icon: any }
 const nav: Item[] = [
   { to: '/diagnostic', label: 'Dashboard', end: true, icon: LayoutDashboard },
   { to: '/diagnostic/token-generator', label: 'Token Generator', icon: Ticket },
-  { to: '/diagnostic/tests', label: 'Tests', icon: FlaskConical },
+  { to: '/diagnostic/tests', label: 'Test Catalog', icon: ClipboardList },
   { to: '/diagnostic/sample-tracking', label: 'Sample Tracking', icon: ListChecks },
   { to: '/diagnostic/result-entry', label: 'Result Entry', icon: FileText },
   { to: '/diagnostic/report-generator', label: 'Report Generator', icon: BarChart3 },
@@ -22,9 +22,8 @@ export const diagnosticSidebarNav = nav
 
 export default function Diagnostic_Sidebar({ collapsed = false }: { collapsed?: boolean }) {
   const navigate = useNavigate()
-  const width = collapsed ? 'md:w-16' : 'md:w-64'
+  const width = collapsed ? 'md:w-14' : 'md:w-56'
   const [role, setRole] = useState<string>('admin')
-  const [username, setUsername] = useState<string>('')
   const [items, setItems] = useState<Item[]>(nav)
 
   useEffect(() => {
@@ -33,7 +32,6 @@ export default function Diagnostic_Sidebar({ collapsed = false }: { collapsed?: 
       if (raw) {
         const u = JSON.parse(raw)
         if (u?.role) setRole(String(u.role).toLowerCase())
-        if (u?.username) setUsername(String(u.username))
       }
     } catch {}
   }, [])
@@ -71,14 +69,10 @@ export default function Diagnostic_Sidebar({ collapsed = false }: { collapsed?: 
   }, [role])
   return (
     <aside
-      className={`hidden md:flex ${width} md:flex-col md:border-r md:text-white`}
-      style={{ background: 'linear-gradient(180deg, var(--navy) 0%, var(--navy-700) 100%)', borderColor: 'rgba(255,255,255,0.12)' }}
+      className={`hidden md:flex ${width} md:flex-none md:shrink-0 md:sticky md:top-14 md:h-[calc(100dvh-3.5rem)] md:flex-col md:border-r`}
+      style={{ background: '#ffffff', borderColor: '#e2e8f0' }}
     >
-      <div className="h-16 px-4 flex items-center border-b" style={{ borderColor: 'rgba(255,255,255,0.12)' }}>
-        {!collapsed && <div className="font-semibold">SideBar</div>}
-        <div className={`ml-auto text-xs opacity-80 ${collapsed?'hidden':''}`}>{username || role}</div>
-      </div>
-      <nav className="flex-1 overflow-y-auto p-3 space-y-1">
+      <nav className={`diagnostic-scroll flex-1 overflow-y-auto ${collapsed ? 'p-2' : 'p-3'} space-y-1`}>
         {items.map(item => {
           const Icon = item.icon
           return (
@@ -86,18 +80,39 @@ export default function Diagnostic_Sidebar({ collapsed = false }: { collapsed?: 
               key={item.to}
               to={item.to}
               title={collapsed ? item.label : undefined}
-              className={({ isActive }) => `rounded-md px-3 py-2 text-sm font-medium flex items-center ${collapsed?'justify-center gap-0':'gap-2'} ${isActive ? 'bg-white/10 text-white' : 'text-white/80 hover:bg-white/5'}`}
+              style={({ isActive }) => (isActive ? ({ background: 'linear-gradient(180deg, var(--navy) 0%, var(--navy-700) 100%)' } as any) : undefined)}
+              className={({ isActive }) => {
+                const base = collapsed
+                  ? 'rounded-md p-2 text-sm font-medium flex items-center justify-center'
+                  : 'rounded-md px-3 py-2 text-sm font-medium flex items-center gap-2'
+                const active = isActive
+                  ? 'text-white'
+                  : 'text-slate-700 hover:bg-slate-50 hover:text-slate-900'
+                return `${base} ${active}`
+              }}
               end={item.end}
             >
-              <Icon className="h-4 w-4" />
-              {!collapsed && <span>{item.label}</span>}
+              {({ isActive }) => (
+                <>
+                  <Icon className={collapsed ? (isActive ? 'h-5 w-5 text-white' : 'h-5 w-5 text-slate-700') : (isActive ? 'h-4 w-4 text-white' : 'h-4 w-4 text-slate-700')} />
+                  {!collapsed && <span>{item.label}</span>}
+                </>
+              )}
             </NavLink>
           )
         })}
       </nav>
-      <div className="p-3">
-        <button onClick={async () => { try { await diagnosticApi.logout() } catch {} try { localStorage.removeItem('token'); localStorage.removeItem('diagnostic.user') } catch {} navigate('/diagnostic/login') }} className="w-full inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium" style={{ backgroundColor: 'rgba(255,255,255,0.08)', color: '#ffffff', border: '1px solid rgba(255,255,255,0.14)' }}>
-          <LogOut className="h-4 w-4" /> Logout
+      <div className={collapsed ? 'p-2' : 'p-3'}>
+        <button
+          title={collapsed ? 'Logout' : undefined}
+          onClick={async () => { try { await diagnosticApi.logout() } catch {} try { localStorage.removeItem('token'); localStorage.removeItem('diagnostic.user') } catch {} navigate('/diagnostic/login') }}
+          className={collapsed ? 'w-full inline-flex items-center justify-center rounded-md p-2 text-sm font-medium' : 'w-full inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium'}
+          style={{ backgroundColor: '#ffffff', color: 'var(--navy)', border: '1px solid var(--navy)' }}
+          onMouseEnter={e => { try { ;(e.currentTarget as any).style.backgroundColor = 'rgba(15,45,92,0.06)' } catch {} }}
+          onMouseLeave={e => { try { ;(e.currentTarget as any).style.backgroundColor = '#ffffff' } catch {} }}
+        >
+          <LogOut className={collapsed ? 'h-5 w-5' : 'h-4 w-4'} />
+          {!collapsed && 'Logout'}
         </button>
       </div>
     </aside>

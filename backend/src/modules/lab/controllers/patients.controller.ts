@@ -3,75 +3,89 @@ import { LabPatient } from '../models/Patient'
 import { nextGlobalMrn } from '../../../common/mrn'
 import { patientFindOrCreateSchema } from '../validators/patient'
 
-function normDigits(s?: string){ return (s||'').replace(/\D+/g,'') }
+function normDigits(s?: string) { return (s || '').replace(/\D+/g, '') }
 
-export async function getByMrn(req: Request, res: Response){
+export async function getByMrn(req: Request, res: Response) {
   const mrn = String((req.query as any).mrn || '').trim()
   if (!mrn) return res.status(400).json({ message: 'Validation failed', issues: [{ path: ['mrn'], message: 'mrn is required' }] })
   const pat = await LabPatient.findOne({ mrn }).lean()
   if (!pat) return res.status(404).json({ error: 'Patient not found' })
   res.json({ patient: pat })
 }
-function normLower(s?: string){ return (s||'').trim().toLowerCase().replace(/\s+/g,' ') }
+function normLower(s?: string) { return (s || '').trim().toLowerCase().replace(/\s+/g, ' ') }
 
 
-export async function findOrCreate(req: Request, res: Response){
+export async function findOrCreate(req: Request, res: Response) {
   const data = patientFindOrCreateSchema.parse(req.body)
   const cnicN = normDigits(data.cnic)
   const phoneN = normDigits(data.phone)
   const nameN = normLower(data.fullName)
   const fatherN = normLower(data.guardianName)
 
-  if (data.selectId){
+  if (data.selectId) {
     const pat = await LabPatient.findById(data.selectId).lean()
     if (!pat) return res.status(404).json({ error: 'Patient not found' })
     return res.json({ patient: pat })
   }
 
-  if (cnicN){
+  if (cnicN) {
     const pat = await LabPatient.findOne({ cnicNormalized: cnicN }).lean()
     if (pat) return res.json({ patient: pat })
   }
 
-  // Prefer exact match on name + guardian first to avoid mixing different people sharing a phone
-  if (nameN && fatherN){
-    const rxName = new RegExp(`^${nameN.replace(/[-/\\^$*+?.()|[\]{}]/g,'\\$&')}$`, 'i')
-    const rxFath = new RegExp(`^${fatherN.replace(/[-/\\^$*+?.()|[\]{}]/g,'\\$&')}$`, 'i')
-    const matches = await LabPatient.find({ fullName: rxName, fatherName: rxFath }).lean()
-    if (matches.length === 1){
-      const m = matches[0]
+  // Phone-first (requested behaviour):
+  // - If phone exists: ALWAYS reuse an existing patient (never create a new MRN for the same phone).
+  // - If multiple patients share same phone: ask for selection.
+  // - Only create a new patient when phone is not found.
+  if (phoneN) {
+    const phoneMatches = await LabPatient.find({ phoneNormalized: phoneN }).lean()
+    if (phoneMatches.length === 1) {
+      const pm: any = phoneMatches[0]
       const patch: any = {}
-      if (phoneN && m.phoneNormalized !== phoneN) patch.phoneNormalized = phoneN
-      if (cnicN && m.cnicNormalized !== cnicN) patch.cnicNormalized = cnicN
-      if (Object.keys(patch).length){
-        const upd = await LabPatient.findByIdAndUpdate(m._id, { $set: patch }, { new: true })
-        return res.json({ patient: upd || m })
+      // Only patch CNIC for the same phone (safe). Do not overwrite name/guardian/phone.
+      if (cnicN && pm.cnicNormalized !== cnicN) patch.cnicNormalized = cnicN
+      if (Object.keys(patch).length) {
+        const upd = await LabPatient.findByIdAndUpdate(pm._id, { $set: patch }, { new: true })
+        return res.json({ patient: upd || pm })
       }
-      return res.json({ patient: m })
-    } else if (matches.length > 1){
-      const brief = matches.map(m=>({ _id: m._id, mrn: m.mrn, fullName: m.fullName, fatherName: m.fatherName, phone: m.phoneNormalized, cnic: m.cnicNormalized }))
+      return res.json({ patient: pm })
+    }
+    if (phoneMatches.length > 1) {
+      const exact = phoneMatches.find(pm => normLower((pm as any).fullName) === nameN && (!fatherN || normLower((pm as any).fatherName) === fatherN))
+      if (exact) return res.json({ patient: exact })
+      const brief = phoneMatches.map(m => ({ _id: m._id, mrn: m.mrn, fullName: m.fullName, fatherName: (m as any).fatherName, phone: m.phoneNormalized, cnic: m.cnicNormalized }))
       return res.json({ matches: brief, needSelection: true })
     }
+    // else: phone not found -> proceed to name/guardian matching and/or create new
   }
 
-  // Fall back to phone only: reuse existing MRN ONLY if the name matches. Otherwise create a new MRN.
-  if (phoneN){
-    const phoneMatches = await LabPatient.find({ phoneNormalized: phoneN }).lean()
-    if (phoneMatches.length === 1){
-      const pm = phoneMatches[0]
-      const pmName = normLower(pm.fullName)
-      const pmFather = normLower(pm.fatherName as any)
-      const nameMatches = !!nameN && pmName === nameN
-      const fatherMatches = !fatherN || pmFather === fatherN
-      if (nameMatches && fatherMatches){
-        return res.json({ patient: pm })
+  // Exact match on name + guardian: only reuse if phone also matches (never overwrite another patient's phone)
+  if (nameN && fatherN) {
+    const rxName = new RegExp(`^${nameN.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}$`, 'i')
+    const rxFath = new RegExp(`^${fatherN.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}$`, 'i')
+    const matches = await LabPatient.find({ fullName: rxName, fatherName: rxFath }).lean()
+    if (matches.length === 1) {
+      const m = matches[0]
+      if (phoneN && m.phoneNormalized !== phoneN) {
+        // Request has a different phone: do not reuse this patient (would overwrite their phone). Create new.
+      } else {
+        const patch: any = {}
+        if (cnicN && m.cnicNormalized !== cnicN) patch.cnicNormalized = cnicN
+        if (Object.keys(patch).length) {
+          const upd = await LabPatient.findByIdAndUpdate(m._id, { $set: patch }, { new: true })
+          return res.json({ patient: upd || m })
+        }
+        return res.json({ patient: m })
       }
-      // else: do not reuse MRN; proceed to create new
-    } else if (phoneMatches.length > 1){
-      // If one of the phone matches has the same name (and guardian if provided), reuse it; else create new
-      const exact = phoneMatches.find(pm => normLower(pm.fullName) === nameN && (!fatherN || normLower(pm.fatherName as any) === fatherN))
-      if (exact) return res.json({ patient: exact })
-      // Otherwise fall through to create new MRN to avoid mixing
+    } else if (matches.length > 1) {
+      const byPhone = phoneN ? matches.filter(m => m.phoneNormalized === phoneN) : matches
+      if (byPhone.length === 1) return res.json({ patient: byPhone[0] })
+      if (byPhone.length > 1) {
+        const brief = byPhone.map(m => ({ _id: m._id, mrn: m.mrn, fullName: m.fullName, fatherName: m.fatherName, phone: m.phoneNormalized, cnic: m.cnicNormalized }))
+        return res.json({ matches: brief, needSelection: true })
+      }
+      const brief = matches.map(m => ({ _id: m._id, mrn: m.mrn, fullName: m.fullName, fatherName: m.fatherName, phone: m.phoneNormalized, cnic: m.cnicNormalized }))
+      return res.json({ matches: brief, needSelection: true })
     }
   }
 
@@ -92,7 +106,7 @@ export async function findOrCreate(req: Request, res: Response){
   res.status(201).json({ patient: pat })
 }
 
-export async function search(req: Request, res: Response){
+export async function search(req: Request, res: Response) {
   const phone = normDigits(String((req.query as any).phone || ''))
   const name = normLower(String((req.query as any).name || ''))
   const limit = Math.max(1, Math.min(50, Number((req.query as any).limit || 10)))
@@ -104,7 +118,7 @@ export async function search(req: Request, res: Response){
   res.json({ patients: pats })
 }
 
-export async function update(req: Request, res: Response){
+export async function update(req: Request, res: Response) {
   const { id } = req.params
   const body = (req.body || {}) as any
   const patch: any = {}

@@ -12,4 +12,13 @@ export const env = {
   BACKUP_RETENTION_COUNT: Number(process.env.BACKUP_RETENTION_COUNT || 30),
   BACKUP_CRON: process.env.BACKUP_CRON || '0 2 * * *', // daily at 02:00
   ADMIN_KEY: process.env.ADMIN_KEY || 'admin_key_change_me',
+
+  // Biometric
+  BIOMETRIC_ENABLED: (process.env.BIOMETRIC_ENABLED || '').toLowerCase() === 'true' || process.env.BIOMETRIC_ENABLED === '1',
+  BIOMETRIC_IP: process.env.BIOMETRIC_IP || '',
+  BIOMETRIC_PORT: Number(process.env.BIOMETRIC_PORT || 4370),
+  BIOMETRIC_DEVICE_ID: process.env.BIOMETRIC_DEVICE_ID || 'ZK-01',
+  BIOMETRIC_COMM_PASSWORD: Number(process.env.BIOMETRIC_COMM_PASSWORD || 0),
+  BIOMETRIC_POLL_INTERVAL_MS: Number(process.env.BIOMETRIC_POLL_INTERVAL_MS || 15000),
+  BIOMETRIC_DUPLICATE_WINDOW_SEC: Number(process.env.BIOMETRIC_DUPLICATE_WINDOW_SEC || 0),
 }
