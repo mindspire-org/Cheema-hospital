@@ -23,6 +23,7 @@ const publicDir = path.join(__dirname, '..', '..', 'dist')
 app.use(express.static(publicDir))
 app.get('*', (req: Request, res: Response, next) => {
   if (req.path.startsWith('/api')) return next()
+  if (req.headers.host?.includes('backend')) return res.status(404).json({ error: 'Not found' })
   try { return res.sendFile(path.join(publicDir, 'index.html')) } catch { return next() }
 })
 
