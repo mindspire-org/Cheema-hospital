@@ -20,7 +20,10 @@ app.use('/api', apiRouter)
 
 // Serve built frontend (root/dist) for all non-API routes
 const publicDir = path.join(__dirname, '..', '..', 'dist')
-app.use(express.static(publicDir))
+app.use((req, res, next) => {
+  if (req.headers.host?.includes('backend')) return next()
+  express.static(publicDir)(req, res, next)
+})
 app.get('*', (req: Request, res: Response, next) => {
   if (req.path.startsWith('/api')) return next()
   if (req.headers.host?.includes('backend')) return res.status(404).json({ error: 'Not found' })
