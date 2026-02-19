@@ -9,7 +9,8 @@
     "start": "node dist/server.js",
     "seed:aesthetic-admin": "ts-node-dev --transpile-only src/seeds/aesthetic_admin.ts",
     "import:lab-tests": "ts-node-dev --transpile-only src/scripts/import_lab_tests.ts",
-    "import:diagnostic-tests": "ts-node-dev --transpile-only src/scripts/import_diagnostic_tests.ts"
+    "import:diagnostic-tests": "ts-node-dev --transpile-only src/scripts/import_diagnostic_tests.ts",
+    "create:users": "ts-node --transpile-only src/create_users.ts"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -32,6 +33,7 @@
     "@types/jsonwebtoken": "^9.0.6",
     "@types/morgan": "^1.9.10",
     "@types/node": "^20.19.25",
+    "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.9.3"
   }

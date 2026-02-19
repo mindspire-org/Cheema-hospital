@@ -12,6 +12,20 @@ dist
 dist-ssr
 *.local
 
+# Environment files (local only - VPS uses its own .env)
+.env
+.env.local
+.env.development
+.env.production
+!.env.example
+
+# Backend environment files
+backend/.env
+backend/.env.local
+backend/.env.development
+backend/.env.production
+!backend/.env.example
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
