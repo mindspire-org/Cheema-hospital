@@ -50,6 +50,12 @@ const users: UserDef[] = [
     password: '123',
     role: 'admin',
   },
+  {
+    model: DiagnosticUser,
+    username: 'diagnostic_user',
+    password: 'diagnostic123',
+    role: 'admin',
+  },
 ]
 
 async function ensureUser(userDef: UserDef) {
